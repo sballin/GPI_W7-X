@@ -2,7 +2,7 @@
 
 ## Usage
 
-`python3 GPI_GUI.py`
+    python3 GPI_GUI.py
 
 ## Contributors
 
