@@ -9,7 +9,7 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import os
 import koheron 
-from GPI_2 import GPI_2
+from GPI_2.GPI_2 import GPI_2
 
 
 def get_fast_status():
@@ -157,7 +157,7 @@ def calc_clock_cycles(event):
 if __name__ == '__main__':
     GPI_host = os.getenv('HOST', 'w7xrp1')
     GPI_client = koheron.connect(GPI_host, name='GPI_2')
-    GPI_driver = koheron.GPI_2(GPI_client)
+    GPI_driver = GPI_2(GPI_client)
 
     root = tk.Tk()
     root.title('GPI Valve Control')
@@ -220,7 +220,7 @@ if __name__ == '__main__':
         
     slow_valve_2_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: slow_valve_open(2))
     slow_valve_2_open_button.place(x=310, y=570)
-    slow_valve_2_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: slow_valve_close(2)))
+    slow_valve_2_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: slow_valve_close(2))
     slow_valve_2_close_button.place(x=310, y=600)
 
     slow_valve_3_indicator = tk.Canvas(root,width=43, height=29)
@@ -234,7 +234,7 @@ if __name__ == '__main__':
         
     slow_valve_3_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: slow_valve_open(3))
     slow_valve_3_open_button.place(x=795, y=370)
-    slow_valve_3_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: slow_valve_close(3)))
+    slow_valve_3_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: slow_valve_close(3))
     slow_valve_3_close_button.place(x=795, y=400)
 
     abs_gauge_label_back = tk.Label(text='Absolute Pressure Gauge')
