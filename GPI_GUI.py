@@ -8,8 +8,19 @@ from __future__ import print_function # for print to work inside lambda
 import tkinter as tk
 from PIL import Image, ImageTk
 import os
+import time
 import koheron 
 from GPI_2.GPI_2 import GPI_2
+
+
+class DummyDriver(object):
+    '''
+    Lets the window open even if RP is not reachable.
+    '''
+    def __getattr__(self, name):
+        def method(*args):
+            return 1
+        return method
 
 
 def get_fast_status():
@@ -25,132 +36,73 @@ def get_fast_status():
         fast_valve_indicator.itemconfig(fast_valve_status, fill='green')
         
         
-def fast_valve_open():
-    fast_win = tk.Toplevel()
-    fast_win_width = 250
-    fast_win_height = 75
-    fast_x = (screen_width / 2) - (fast_win_width / 2)
-    fast_y = (screen_height / 2) - (fast_win_height / 2)
-    fast_win.geometry('%dx%d+%d+%d' % (fast_win_width, fast_win_height, fast_x, fast_y))
-    fast_win.title('FV2')
-    fast_win.rowconfigure(0, weight=1)
-    fast_win.rowconfigure(1, weight=1)
-    fast_win.columnconfigure(0, weight=1)
-    fast_win.columnconfigure(1, weight=1)
-    msg = tk.Message(fast_win, text='Please confirm the OPENING of the FV2.', width=200)
-    msg.grid(columnspan=2)
-    
-    def fast_confirm():
-        GPI_driver.set_fast_1_trigger(1)
-        #get_fast_status()
-        fast_valve_indicator.itemconfig(fast_valve_status, fill='green')
-        fast_win.destroy()
-        
-    confirm = tk.Button(fast_win, text='Confirm', width=10, command=fast_confirm)
-    confirm.grid(row=1, column=0)
-    cancel = tk.Button(fast_win, text='Cancel', width=10, command=fast_win.destroy)
-    cancel.grid(row=1, column=1)
-    
-    
-def fast_valve_close():
-    fast_win = tk.Toplevel()
-    fast_win_width = 250
-    fast_win_height = 75
-    fast_x = (screen_width / 2) - (fast_win_width / 2)
-    fast_y = (screen_height / 2) - (fast_win_height / 2)
-    fast_win.geometry('%dx%d+%d+%d' % (fast_win_width, fast_win_height, fast_x, fast_y))
-    fast_win.title('FV2')
-    fast_win.rowconfigure(0, weight=1)
-    fast_win.rowconfigure(1, weight=1)
-    fast_win.columnconfigure(0, weight=1)
-    fast_win.columnconfigure(1, weight=1)
-    msg = tk.Message(fast_win, text='Please confirm the CLOSING of the FV2.', width=200)
-    msg.grid(columnspan=2)
-    
-    def fast_confirm():
-        GPI_driver.set_fast_1_trigger(0)
-        #get_fast_status()
-        fast_valve_indicator.itemconfig(fast_valve_status, fill='red')
-        fast_win.destroy()
-        
-    confirm = tk.Button(fast_win, text='Confirm', width=10, command=fast_confirm)
-    confirm.grid(row=1, column=0)
-    cancel = tk.Button(fast_win, text='Cancel', width=10, command=fast_win.destroy)
-    cancel.grid(row=1, column=1)
-
-
 def get_slow_status(valve_number):
-    fill = 'green' if getattr(GPI_driver, f'get_slow_{valve_number}_trigger')() else 'red'
-    globals()[f'slow_valve_{valve_number}_indicator'].itemconfig(globals()[f'slow_valve_{valve_number}_status'], fill=fill)
+    getter = getattr(GPI_driver, 'get_slow_%s_trigger' % valve_number)
+    fill = 'green' if getter() else 'red'
+    indicator = globals()['slow_valve_%s_indicator' % valve_number]
+    status = globals()['slow_valve_%s_status' % valve_number]
+    indicator.itemconfig(status, fill=fill)
     
+    
+def _confirm_window(question, action_if_confirmed):
+    win = tk.Toplevel()
+    win_width = 250
+    win_height = 75
+    x = (screen_width / 2) - (win_width / 2)
+    y = (screen_height / 2) - (win_height / 2)
+    win.geometry('%dx%d+%d+%d' % (win_width, win_height, x, y))
+    win.title('Confirm')
+    win.rowconfigure(0, weight=1)
+    win.rowconfigure(1, weight=1)
+    win.columnconfigure(0, weight=1)
+    win.columnconfigure(1, weight=1)
+    msg = tk.Message(win, text=question, width=200)
+    msg.grid(columnspan=2)
+    
+    def action_and_close():
+        action_if_confirmed()
+        win.destroy()
+    
+    confirm = tk.Button(win, text='Confirm', width=10, command=action_and_close)
+    confirm.grid(row=1, column=0)
+    cancel = tk.Button(win, text='Cancel', width=10, command=win.destroy)
+    cancel.grid(row=1, column=1)
 
-def slow_valve_open(valve_number):
-    valve_name = ['V5', 'V4', 'V3'][valve_number - 1]
-    slow_win = tk.Toplevel()
-    slow_win_width = 250
-    slow_win_height = 75
-    slow_win_x = (screen_width / 2) - (slow_win_width / 2)
-    slow_win_y = (screen_height / 2) - (slow_win_height / 2)
-    slow_win.geometry('%dx%d+%d+%d' % (slow_win_width, slow_win_height, slow_win_x, slow_win_y))
-    slow_win.title(valve_name)
-    slow_win.rowconfigure(0, weight=1)
-    slow_win.rowconfigure(1, weight=1)
-    slow_win.columnconfigure(0, weight=1)
-    slow_win.columnconfigure(1, weight=1)
-    msg = tk.Message(slow_win, text=f'Please confirm the OPENING of {valve_name}.', width=200)
-    msg.grid(columnspan=2)
+
+def toggle_valve(speed, valve_number, command):
+    signal = 1              if command == 'open' else 0
+    action_text = 'OPENING' if command == 'open' else 'CLOSING'
+    fill = 'green'          if command == 'open' else 'red'
     
-    def slow_confirm():
-        if valve_name == 'V3': # reversed from normal
-            getattr(GPI_driver, f'set_slow_{valve_number}_trigger')(0)
-        else:
-            getattr(GPI_driver, f'set_slow_{valve_number}_trigger')(1)
-        #globals()[f'get_slow_status')](valve_number)
-        globals()[f'slow_valve_{valve_number}_indicator'].itemconfig(globals()[f'slow_valve_{valve_number}_status'], fill='green')
-        slow_win.destroy()
+    if speed == 'slow':
+        valve_name = ['V5', 'V4', 'V3'][valve_number - 1] 
+    else:
+        valve_name = 'FV2'
         
-    confirm = tk.Button(slow_win, text='Confirm', width=10, command=slow_confirm)
-    confirm.grid(row=1, column=0)
-    cancel = tk.Button(slow_win, text='Cancel', width=10, command=slow_win.destroy)
-    cancel.grid(row=1, column=1)
+    if valve_name == 'V3': # this valve's signals are reversed relative to normal
+        signal = int(not signal) 
     
+    def action():
+        # Send signal
+        set_trigger = getattr(GPI_driver, 'set_%s_%s_trigger' % (speed, valve_number))
+        set_trigger(signal)
+            
+        # Change indicator color
+        if speed == 'slow':
+            indicator = globals()['slow_valve_%s_indicator' % valve_number]
+            status = globals()['slow_valve_%s_status' % valve_number]
+            indicator.itemconfig(status, fill=fill)
+        elif speed == 'fast':
+            fast_valve_indicator.itemconfig(fast_valve_status, fill=fill)
     
-def slow_valve_close(valve_number):
-    valve_name = ['V5', 'V4', 'V3'][valve_number - 1]
-    slow_win = tk.Toplevel()
-    slow_win_width = 250
-    slow_win_height = 75
-    slow_win_x = (screen_width / 2) - (slow_win_width / 2)
-    slow_win_y = (screen_height / 2) - (slow_win_height / 2)
-    slow_win.geometry('%dx%d+%d+%d' % (slow_win_width, slow_win_height, slow_win_x, slow_win_y))
-    slow_win.title(valve_name)
-    slow_win.rowconfigure(0, weight=1)
-    slow_win.rowconfigure(1, weight=1)
-    slow_win.columnconfigure(0, weight=1)
-    slow_win.columnconfigure(1, weight=1)
-    msg = tk.Message(slow_win, text=f'Please confirm the CLOSING of {valve_name}.', width=200)
-    msg.grid(columnspan=2)
-    
-    def slow_confirm():
-        if valve_name == 'V3': # reversed from normal
-            getattr(GPI_driver, f'set_slow_valve_{valve_number}_trigger')(1)
-        else:
-            getattr(GPI_driver, f'set_slow_valve_{valve_number}_trigger')(0)
-        #globals()[f'get_slow_status')](valve_number)
-        globals()[f'slow_valve_{valve_number}_indicator'].itemconfig(globals()[f'slow_valve_{valve_number}_status'], fill='red')
-        slow_win.destroy()
+    _confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
         
-    confirm = tk.Button(slow_win, text='Confirm', width=10, command=slow_confirm)
-    confirm.grid(row=1, column=0)
-    cancel = tk.Button(slow_win, text='Cancel', width=10, command=slow_win.destroy)
-    cancel.grid(row=1, column=1)
-    
 
 def print_check(check_number):
-    if globals()[f'local_permission_{check_number}_var'].get():
-        getattr(GPI_driver, f'set_fast_1_permission_{check_number}')(1)
+    if globals()['local_permission_%s_var' % check_number].get():
+        getattr(GPI_driver, 'set_fast_1_permission_%s' % check_number)(1)
     else:
-        getattr(GPI_driver, f'set_fast_1_permission_{check_number}')(0)
+        getattr(GPI_driver, 'set_fast_1_permission_%s' % check_number)(0)
         
         
 def calc_clock_cycles(event):
@@ -159,14 +111,30 @@ def calc_clock_cycles(event):
     print(cycles_in_entry)
     print(cycles_in_duration)
     
+    
+def uint32_to_volts(reading):
+    return -20+40/4294967295*reading
+    
+    
+def abs_torr(rp1_reading):
+    return 10/5000*uint32_to_volts(rp1_reading)
+    
+    
+def diff_torr(rp2_reading):
+    return 10/100*uint32_to_volts(rp2_reading)
+
 
 if __name__ == '__main__':
-    GPI_host = os.getenv('HOST', 'w7xrp1')
-    GPI_client = koheron.connect(GPI_host, name='GPI_2')
-    GPI_driver = GPI_2(GPI_client)
-
     root = tk.Tk()
-    root.title('GPI Valve Control')
+    try:
+        GPI_host = os.getenv('HOST', 'w7xrp2')
+        GPI_client = koheron.connect(GPI_host, name='GPI_2')
+        GPI_driver = GPI_2(GPI_client)
+        root.title('GPI Valve Control')
+    except Exception as e:
+        print(e)
+        GPI_driver = DummyDriver()
+        root.title('GPI Valve Control (NOT CONNECTED)')
 
     win_width = 1450
     win_height = 880
@@ -192,13 +160,12 @@ if __name__ == '__main__':
     fast_valve_status = fast_valve_indicator.create_rectangle(0, 0, 29, 43)
     fast_valve_indicator.itemconfig(fast_valve_status, fill='red')
 
-    # get_fast_valve_status()
     fast_valve_label_back = tk.Label(text='FV2', width=13)
     fast_valve_label_back.place(x=125, y=125)
         
-    fast_valve_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=fast_valve_open)
+    fast_valve_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=toggle_valve('fast', 1, 'open'))
     fast_valve_open_button.place(x=125, y=150)
-    fast_valve_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=fast_valve_close)
+    fast_valve_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=toggle_valve('fast', 1, 'close'))
     fast_valve_close_button.place(x=125, y=180)
 
     slow_valve_1_indicator = tk.Canvas(root,width=29, height=43)
@@ -210,9 +177,9 @@ if __name__ == '__main__':
     slow_valve_1_label_back = tk.Label(text='V5', width=13)
     slow_valve_1_label_back.place(x=475, y=380)
 
-    slow_valve_1_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: slow_valve_open(1))
+    slow_valve_1_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: toggle_valve('slow', 1, 'open'))
     slow_valve_1_open_button.place(x=475, y=405)
-    slow_valve_1_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: slow_valve_close(1))
+    slow_valve_1_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: toggle_valve('slow', 1, 'close'))
     slow_valve_1_close_button.place(x=475, y=435)
 
     slow_valve_2_indicator = tk.Canvas(root,width=43, height=29)
@@ -220,13 +187,12 @@ if __name__ == '__main__':
     slow_valve_2_status = slow_valve_2_indicator.create_rectangle(0, 0, 43, 29)
     slow_valve_2_indicator.itemconfig(slow_valve_2_status, fill='red')
 
-    # get_slow_status(2)
     slow_valve_2_label_back = tk.Label(text='V4', width=13)
     slow_valve_2_label_back.place(x=310, y=545)
         
-    slow_valve_2_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: slow_valve_open(2))
+    slow_valve_2_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: toggle_valve('slow', 2, 'open'))
     slow_valve_2_open_button.place(x=310, y=570)
-    slow_valve_2_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: slow_valve_close(2))
+    slow_valve_2_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: toggle_valve('slow', 2, 'close'))
     slow_valve_2_close_button.place(x=310, y=600)
 
     slow_valve_3_indicator = tk.Canvas(root,width=43, height=29)
@@ -234,13 +200,12 @@ if __name__ == '__main__':
     slow_valve_3_status = slow_valve_3_indicator.create_rectangle(0, 0, 43, 29)
     slow_valve_3_indicator.itemconfig(slow_valve_3_status, fill='green')
 
-    # get_slow_status(3)
     slow_valve_3_label_back = tk.Label(text='V3', width=13)
     slow_valve_3_label_back.place(x=795, y=345)
         
-    slow_valve_3_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: slow_valve_open(3))
+    slow_valve_3_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: toggle_valve('slow', 3, 'open'))
     slow_valve_3_open_button.place(x=795, y=370)
-    slow_valve_3_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: slow_valve_close(3))
+    slow_valve_3_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: toggle_valve('slow', 3, 'close'))
     slow_valve_3_close_button.place(x=795, y=400)
 
     abs_gauge_label_back = tk.Label(text='Absolute Pressure Gauge')
@@ -248,7 +213,7 @@ if __name__ == '__main__':
     diff_gauge_label_back = tk.Label(text='Differential Pressure Gauge')
     diff_gauge_label_back.place(x=855, y=170)
 
-    abs_gauge_label = tk.Label(text='Absolute Pressure Gauge Reading:')
+    abs_gauge_label = tk.Label(text='Absolute Pressure Gauge Reading:\n0 Torr')
     abs_gauge_label.grid(row=0, column=4, columnspan=2)
     abs_gauge_graph = tk.Canvas(root, width=200, height=200, background='grey')
     abs_gauge_graph.grid(row=1, column=4, columnspan=2)
@@ -314,4 +279,9 @@ if __name__ == '__main__':
     GPI_safe_state_button = tk.Button(root, text='ENABLE', width=10)
     GPI_safe_state_button.grid(row=12, column=5)
 
-    root.mainloop()
+    while True:
+        abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % abs_torr(GPI_driver.get_abs_gauge())
+        diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % diff_torr(GPI_driver.get_diff_gauge())
+        time.sleep(1)
+        root.update_idletasks()
+        root.update()

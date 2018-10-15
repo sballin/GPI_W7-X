@@ -165,6 +165,3 @@ class GPI_2(object):
     @command()
     def get_diff_gauge(self):
         return self.client.recv_uint32()
-
-
-
