@@ -101,7 +101,10 @@ def slow_valve_open(valve_number):
     msg.grid(columnspan=2)
     
     def slow_confirm():
-        getattr(GPI_driver, f'set_slow_{valve_number}_trigger')(1)
+        if valve_name == 'V3': # reversed from normal
+            getattr(GPI_driver, f'set_slow_{valve_number}_trigger')(0)
+        else:
+            getattr(GPI_driver, f'set_slow_{valve_number}_trigger')(1)
         #globals()[f'get_slow_status')](valve_number)
         globals()[f'slow_valve_{valve_number}_indicator'].itemconfig(globals()[f'slow_valve_{valve_number}_status'], fill='green')
         slow_win.destroy()
@@ -129,7 +132,10 @@ def slow_valve_close(valve_number):
     msg.grid(columnspan=2)
     
     def slow_confirm():
-        getattr(GPI_driver, f'set_slow_valve_{valve_number}_trigger')(0)
+        if valve_name == 'V3': # reversed from normal
+            getattr(GPI_driver, f'set_slow_valve_{valve_number}_trigger')(1)
+        else:
+            getattr(GPI_driver, f'set_slow_valve_{valve_number}_trigger')(0)
         #globals()[f'get_slow_status')](valve_number)
         globals()[f'slow_valve_{valve_number}_indicator'].itemconfig(globals()[f'slow_valve_{valve_number}_status'], fill='red')
         slow_win.destroy()
