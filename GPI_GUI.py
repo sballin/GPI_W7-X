@@ -19,7 +19,7 @@ class DummyDriver(object):
     '''
     def __getattr__(self, name):
         def method(*args):
-            return 1
+            return 0
         return method
 
 
@@ -136,8 +136,9 @@ if __name__ == '__main__':
         GPI_driver = DummyDriver()
         root.title('GPI Valve Control (NOT CONNECTED)')
 
-    win_width = 1450
-    win_height = 880
+    scale_down = 1.2
+    win_width = int(1450/scale_down)
+    win_height = int(880/scale_down)
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     x = (screen_width / 2) - (win_width / 2)
@@ -150,68 +151,69 @@ if __name__ == '__main__':
     root.rowconfigure(12, weight=1)
 
     image = Image.open('background.png')
+    image = image.resize((int(1200/scale_down), int(768/scale_down)))
     photo = ImageTk.PhotoImage(image)
     background = tk.Label(image=photo)
     background.image = photo
     background.grid(rowspan=10, columnspan=4)
 
-    fast_valve_indicator = tk.Canvas(root,width=29, height=43)
-    fast_valve_indicator.place(x=68, y=210)
-    fast_valve_status = fast_valve_indicator.create_rectangle(0, 0, 29, 43)
+    fast_valve_indicator = tk.Canvas(root,width=29/scale_down, height=43/scale_down)
+    fast_valve_indicator.place(x=68/scale_down, y=210/scale_down)
+    fast_valve_status = fast_valve_indicator.create_rectangle(0, 0, int(29/scale_down), int(43/scale_down))
     fast_valve_indicator.itemconfig(fast_valve_status, fill='red')
 
-    fast_valve_label_back = tk.Label(text='FV2', width=13)
-    fast_valve_label_back.place(x=125, y=125)
+    fast_valve_label_back = tk.Label(text='FV2', width=int(13/scale_down))
+    fast_valve_label_back.place(x=125/scale_down, y=125/scale_down)
         
-    fast_valve_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=toggle_valve('fast', 1, 'open'))
-    fast_valve_open_button.place(x=125, y=150)
-    fast_valve_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=toggle_valve('fast', 1, 'close'))
-    fast_valve_close_button.place(x=125, y=180)
+    fast_valve_open_button = tk.Button(root, text='OPEN', fg='green', width=int(10/scale_down), command=toggle_valve('fast', 1, 'open'))
+    fast_valve_open_button.place(x=125/scale_down, y=150/scale_down)
+    fast_valve_close_button = tk.Button(root, text='CLOSE', fg='red', width=int(10/scale_down), command=toggle_valve('fast', 1, 'close'))
+    fast_valve_close_button.place(x=125/scale_down, y=180/scale_down)
 
-    slow_valve_1_indicator = tk.Canvas(root,width=29, height=43)
-    slow_valve_1_indicator.place(x=417, y=464)
-    slow_valve_1_status = slow_valve_1_indicator.create_rectangle(0, 0, 29, 43)
+    slow_valve_1_indicator = tk.Canvas(root,width=int(29/scale_down), height=int(43/scale_down))
+    slow_valve_1_indicator.place(x=417/scale_down, y=464/scale_down)
+    slow_valve_1_status = slow_valve_1_indicator.create_rectangle(0, 0, int(29/scale_down), int(43/scale_down))
     slow_valve_1_indicator.itemconfig(slow_valve_1_status, fill='red')
 
     get_slow_status(1)
-    slow_valve_1_label_back = tk.Label(text='V5', width=13)
-    slow_valve_1_label_back.place(x=475, y=380)
+    slow_valve_1_label_back = tk.Label(text='V5', width=int(13/scale_down))
+    slow_valve_1_label_back.place(x=475/scale_down, y=380/scale_down)
 
-    slow_valve_1_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: toggle_valve('slow', 1, 'open'))
-    slow_valve_1_open_button.place(x=475, y=405)
-    slow_valve_1_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: toggle_valve('slow', 1, 'close'))
-    slow_valve_1_close_button.place(x=475, y=435)
+    slow_valve_1_open_button = tk.Button(root, text='OPEN', fg='green', width=int(10/scale_down), command=lambda: toggle_valve('slow', 1, 'open'))
+    slow_valve_1_open_button.place(x=475/scale_down, y=405/scale_down)
+    slow_valve_1_close_button = tk.Button(root, text='CLOSE', fg='red', width=int(10/scale_down), command=lambda: toggle_valve('slow', 1, 'close'))
+    slow_valve_1_close_button.place(x=475/scale_down, y=435/scale_down)
 
-    slow_valve_2_indicator = tk.Canvas(root,width=43, height=29)
-    slow_valve_2_indicator.place(x=509, y=571)
-    slow_valve_2_status = slow_valve_2_indicator.create_rectangle(0, 0, 43, 29)
+    slow_valve_2_indicator = tk.Canvas(root,width=int(43/scale_down), height=int(29/scale_down))
+    slow_valve_2_indicator.place(x=509/scale_down, y=571/scale_down)
+    slow_valve_2_status = slow_valve_2_indicator.create_rectangle(0, 0, int(43/scale_down), int(29/scale_down))
     slow_valve_2_indicator.itemconfig(slow_valve_2_status, fill='red')
 
-    slow_valve_2_label_back = tk.Label(text='V4', width=13)
-    slow_valve_2_label_back.place(x=310, y=545)
+    slow_valve_2_label_back = tk.Label(text='V4', width=int(13/scale_down))
+    slow_valve_2_label_back.place(x=310/scale_down, y=545/scale_down)
         
-    slow_valve_2_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: toggle_valve('slow', 2, 'open'))
-    slow_valve_2_open_button.place(x=310, y=570)
-    slow_valve_2_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: toggle_valve('slow', 2, 'close'))
-    slow_valve_2_close_button.place(x=310, y=600)
+    slow_valve_2_open_button = tk.Button(root, text='OPEN', fg='green', width=int(10/scale_down), command=lambda: toggle_valve('slow', 2, 'open'))
+    slow_valve_2_open_button.place(x=310/scale_down, y=570/scale_down)
+    slow_valve_2_close_button = tk.Button(root, text='CLOSE', fg='red', width=int(10/scale_down), command=lambda: toggle_valve('slow', 2, 'close'))
+    slow_valve_2_close_button.place(x=310/scale_down, y=600/scale_down)
 
-    slow_valve_3_indicator = tk.Canvas(root,width=43, height=29)
-    slow_valve_3_indicator.place(x=661, y=374)
-    slow_valve_3_status = slow_valve_3_indicator.create_rectangle(0, 0, 43, 29)
+    slow_valve_3_indicator = tk.Canvas(root,width=int(43/scale_down), height=int(29/scale_down))
+    slow_valve_3_indicator.place(x=661/scale_down, y=374/scale_down)
+    slow_valve_3_status = slow_valve_3_indicator.create_rectangle(0, 0, int(43/scale_down), int(29/scale_down))
     slow_valve_3_indicator.itemconfig(slow_valve_3_status, fill='green')
 
-    slow_valve_3_label_back = tk.Label(text='V3', width=13)
-    slow_valve_3_label_back.place(x=795, y=345)
+    slow_valve_3_label_back = tk.Label(text='V3', width=int(13/scale_down))
+    slow_valve_3_label_back.place(x=795/scale_down, y=345/scale_down)
         
-    slow_valve_3_open_button = tk.Button(root, text='OPEN', fg='green', width=10, command=lambda: toggle_valve('slow', 3, 'open'))
-    slow_valve_3_open_button.place(x=795, y=370)
-    slow_valve_3_close_button = tk.Button(root, text='CLOSE', fg='red', width=10, command=lambda: toggle_valve('slow', 3, 'close'))
-    slow_valve_3_close_button.place(x=795, y=400)
+    slow_valve_3_open_button = tk.Button(root, text='OPEN', fg='green', width=int(10/scale_down), command=lambda: toggle_valve('slow', 3, 'open'))
+    slow_valve_3_open_button.place(x=795/scale_down, y=370/scale_down)
+    slow_valve_3_close_button = tk.Button(root, text='CLOSE', fg='red', width=int(10/scale_down), command=lambda: toggle_valve('slow', 3, 'close'))
+    slow_valve_3_close_button.place(x=795/scale_down, y=400/scale_down)
 
     abs_gauge_label_back = tk.Label(text='Absolute Pressure Gauge')
-    abs_gauge_label_back.place(x=605, y=5)
+    abs_gauge_label_back.place(x=605/scale_down, y=5/scale_down)
     diff_gauge_label_back = tk.Label(text='Differential Pressure Gauge')
-    diff_gauge_label_back.place(x=855, y=170)
+    diff_gauge_label_back.place(x=855/scale_down, y=170/scale_down)
 
     abs_gauge_label = tk.Label(text='Absolute Pressure Gauge Reading:\n0 Torr')
     abs_gauge_label.grid(row=0, column=4, columnspan=2)
