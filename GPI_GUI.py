@@ -117,20 +117,20 @@ def calc_clock_cycles(event):
     
     
 def uint32_to_volts(reading):
-    return -20+40/4294967295*reading
+    return .318+1.509*(20/(2**13-1)*signed_conversion(reading))
     
     
 def abs_torr(rp1_reading):
-    return 10/5000*uint32_to_volts(rp1_reading)
+    return 5000/10*uint32_to_volts(rp1_reading)
     
     
 def diff_torr(rp2_reading):
-    return 10/100*uint32_to_volts(rp2_reading)
+    return 100/10*uint32_to_volts(rp2_reading)
     
     
 def fill():
     desired_pressure = float(desired_pressure_entry.get())
-    desired_volts = 5000/10*desired_pressure
+    desired_volts = 10/5000*desired_pressure
     
     globals()['desired_pressure'] = desired_pressure
     globals()['filling'] = True
@@ -138,6 +138,23 @@ def fill():
     
 def pump_refill():
     globals()['pumping_down'] = True
+
+
+def signed_conversion(reading):
+    binNumber = "{0:032b}".format(reading)[-14:]
+    binConv = ""
+    if int(binNumber[0], 2) == 1:
+        for bit in binNumber[1::]:
+            if bit == "1":
+                binConv += "0"
+            else:
+                binConv += "1"
+        intNum = -int(binConv, 2) - 1
+    else:
+        for bit in binNumber[1::]:
+            binConv += bit
+        intNum = int(binConv, 2)
+    return intNum
 
 
 if __name__ == '__main__':
@@ -303,8 +320,10 @@ if __name__ == '__main__':
     last_voltage = 0
 
     while True:
-        abs_voltage = GPI_driver.get_abs_gauge()
-        abs_pressure = abs_torr(abs_voltage)
+        abs_reading = GPI_driver.get_abs_gauge()
+        abs_voltage = uint32_to_volts(int(abs_reading))
+        abs_pressure = abs_torr(abs_reading)
+        print(abs_reading, signed_conversion(abs_reading), abs_voltage, abs_pressure)
         diff_pressure = diff_torr(GPI_driver.get_diff_gauge())
         abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % abs_pressure
         diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % diff_pressure
