@@ -141,7 +141,7 @@ def pump_refill():
 
 
 def signed_conversion(reading):
-    binNumber = "{0:032b}".format(reading)[-14:]
+    binNumber = "{0:014b}".format(int(reading))
     binConv = ""
     if int(binNumber[0], 2) == 1:
         for bit in binNumber[1::]:
