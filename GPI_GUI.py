@@ -318,13 +318,18 @@ if __name__ == '__main__':
     filling = False
     pumping_down = False
     last_voltage = 0
+    average_samples = 100
 
     while True:
-        abs_reading = GPI_driver.get_abs_gauge()
+        readings = zip(*[(GPI_driver.get_abs_gauge(),
+                          GPI_driver.get_diff_gauge()) for i in range(average_samples)])
+        abs_reading = sum(readings[0])/len(readings[0])
         abs_voltage = uint32_to_volts(int(abs_reading))
         abs_pressure = abs_torr(abs_reading)
         print(abs_reading, signed_conversion(abs_reading), abs_voltage, abs_pressure)
-        diff_pressure = diff_torr(GPI_driver.get_diff_gauge())
+        
+        diff_reading = sum(readings[1])/len(readings[1])
+        diff_pressure = diff_torr(diff_reading)
         abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % abs_pressure
         diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % diff_pressure
         
