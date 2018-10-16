@@ -69,7 +69,7 @@ def _confirm_window(question, action_if_confirmed):
     cancel.grid(row=1, column=1)
 
 
-def toggle_valve(speed, valve_number, command):
+def toggle_valve(speed, valve_number, command, no_confirm=False):
     signal = 1              if command == 'open' else 0
     action_text = 'OPENING' if command == 'open' else 'CLOSING'
     fill = 'green'          if command == 'open' else 'red'
@@ -81,6 +81,7 @@ def toggle_valve(speed, valve_number, command):
         
     if valve_name == 'V3': # this valve's signals are reversed relative to normal
         signal = int(not signal) 
+        
     
     def action():
         # Send signal
@@ -94,8 +95,11 @@ def toggle_valve(speed, valve_number, command):
             indicator.itemconfig(status, fill=fill)
         elif speed == 'fast':
             fast_valve_indicator.itemconfig(fast_valve_status, fill=fill)
-    
-    _confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
+            
+    if no_confirm:
+        action()
+    else:
+        _confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
         
 
 def print_check(check_number):
@@ -122,6 +126,18 @@ def abs_torr(rp1_reading):
     
 def diff_torr(rp2_reading):
     return 10/100*uint32_to_volts(rp2_reading)
+    
+    
+def fill():
+    desired_pressure = float(desired_pressure_entry.get())
+    desired_volts = 5000/10*desired_pressure
+    
+    globals()['desired_pressure'] = desired_pressure
+    globals()['filling'] = True
+    
+    
+def pump_refill():
+    globals()['pumping_down'] = True
 
 
 if __name__ == '__main__':
@@ -230,10 +246,10 @@ if __name__ == '__main__':
     desired_pressure_entry = tk.Entry(root, width=10)
     desired_pressure_entry.grid(row=6, column=5)
 
-    fill_button = tk.Button(root, text='Fill', width=10)
+    fill_button = tk.Button(root, text='Fill', width=10, command=fill)
     fill_button.grid(row=7, column=4)
 
-    pump_refill_button = tk.Button(root, text='Pump & Refill', width=10)
+    pump_refill_button = tk.Button(root, text='Pump & Refill', width=10, command=pump_refill)
     pump_refill_button.grid(row=7, column=5)
 
     local_permission_1_label = tk.Label(text='Local Permission #1')
@@ -280,10 +296,46 @@ if __name__ == '__main__':
     GPI_safe_state_label.grid(row=12, column=4)
     GPI_safe_state_button = tk.Button(root, text='ENABLE', width=10)
     GPI_safe_state_button.grid(row=12, column=5)
+    
+    desired_pressure = 0
+    filling = False
+    pumping_down = False
+    last_voltage = 0
 
     while True:
-        abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % abs_torr(GPI_driver.get_abs_gauge())
-        diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % diff_torr(GPI_driver.get_diff_gauge())
-        time.sleep(1)
+        abs_voltage = GPI_driver.get_abs_gauge()
+        abs_pressure = abs_torr(abs_voltage)
+        diff_pressure = diff_torr(GPI_driver.get_diff_gauge())
+        abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % abs_pressure
+        diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % diff_pressure
+        
+        if filling:
+            sleep_seconds = 0.2
+            if abs_pressure > 0 and desired_pressure > 0:
+                if abs_pressure < desired_pressure:
+                    if not GPI_driver.get_slow_1_trigger():
+                        toggle_valve('slow', 1, 'open', no_confirm=True)
+                elif abs_pressure > 0.97*desired_pressure:
+                    toggle_valve('slow', 1, 'close', no_confirm=True)
+                    filling = False
+            else:
+                filling = False
+        else:
+            sleep_seconds = 1
+        
+        if pumping_down:
+            sleep_seconds = 0.2
+            if abs_pressure > 0 and desired_pressure > 0:                    
+                if not GPI_driver.get_slow_2_trigger():
+                    toggle_valve('slow', 2, 'open', no_confirm=True)
+                if (abs_voltage < 0.02 and last_voltage < 0.02) or \
+                   abs_pressure < desired_pressure:
+                    toggle_valve('slow', 2, 'close', no_confirm=True)
+                    pumping_down = False
+                    filling = True
+                    sleep_seconds = 1
+        
+        last_voltage = abs_voltage
+        time.sleep(sleep_seconds)
         root.update_idletasks()
         root.update()
