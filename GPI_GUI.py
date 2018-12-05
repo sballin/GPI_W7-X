@@ -11,7 +11,12 @@ import os
 import time
 import koheron 
 from GPI_2.GPI_2 import GPI_2
-
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.backends.tkagg as tkagg
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 
 class DummyDriver(object):
     '''
@@ -117,16 +122,21 @@ def calc_clock_cycles(event):
     
     
 def uint32_to_volts(reading):
-    return .318+1.509*(20/(2**13-1)*signed_conversion(reading))
+    measured=(2/(2**14-1)*signed_conversion(reading))
+    #return 0.0661+4.526*measured # for 1 V jumper and the 0.252 voltage divider
+    #return 0.01097+1.135*measured  # for 1V jumper and no voltage divider
+    #return 0.3917+1.448*measured # for 20V jumper
+    return measured #to return the the RP measured voltage (no calibration)                  
+    #return (20./(2**13-1)*signed_conversion(reading)) # first 1 should be changed to 20 if the jumper is toggled
     
     
-def abs_torr(rp1_reading):
-    return 5000/10*uint32_to_volts(rp1_reading)
+def abs_torr(rp1_voltage):
+    #return 5000/10*uint32_to_volts(rp1_reading)
+    return 5000/10*rp1_voltage
     
-    
-def diff_torr(rp2_reading):
-    return 100/10*uint32_to_volts(rp2_reading)
-    
+def diff_torr(rp2_voltage):
+    #return 100/10*uint32_to_volts(rp2_reading)
+    return 100/10*rp2_voltage
     
 def fill():
     desired_pressure = float(desired_pressure_entry.get())
@@ -139,9 +149,19 @@ def fill():
 def pump_refill():
     globals()['pumping_down'] = True
 
+def draw_plot(canvas, figure):
+    figure_canvas_agg = FigureCanvasAgg(figure)
+    figure_canvas_agg.draw()
+    x, y, w, h = figure.bbox.bounds
+    w, h = int(w), int(h)
+    plot = tk.PhotoImage(master=canvas, width=w, height=h)
+    canvas.create_image(w/2, h/2, image=plot)
+    tkagg.blit(plot, figure_canvas_agg.get_renderer()._renderer, colormode=2)
+    return plot
+
 
 def signed_conversion(reading):
-    binNumber = "{0:014b}".format(int(reading))
+    binNumber = "{0:014b}".format(int(round(reading)))
     binConv = ""
     if int(binNumber[0], 2) == 1:
         for bit in binNumber[1::]:
@@ -154,6 +174,7 @@ def signed_conversion(reading):
         for bit in binNumber[1::]:
             binConv += bit
         intNum = int(binConv, 2)
+    #print(binNumber, intNum)
     return intNum
 
 
@@ -169,8 +190,8 @@ if __name__ == '__main__':
         GPI_driver = DummyDriver()
         root.title('GPI Valve Control (NOT CONNECTED)')
 
-    scale_down = 1.2
-    win_width = int(1450/scale_down)
+    scale_down = 1
+    win_width = int(1600/scale_down)
     win_height = int(880/scale_down)
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
@@ -198,9 +219,9 @@ if __name__ == '__main__':
     fast_valve_label_back = tk.Label(text='FV2', width=int(13/scale_down))
     fast_valve_label_back.place(x=125/scale_down, y=125/scale_down)
         
-    fast_valve_open_button = tk.Button(root, text='OPEN', fg='green', width=int(10/scale_down), command=toggle_valve('fast', 1, 'open'))
+    fast_valve_open_button = tk.Button(root, text='OPEN', fg='green', width=int(10/scale_down), command=lambda: toggle_valve('fast', 1, 'open'))
     fast_valve_open_button.place(x=125/scale_down, y=150/scale_down)
-    fast_valve_close_button = tk.Button(root, text='CLOSE', fg='red', width=int(10/scale_down), command=toggle_valve('fast', 1, 'close'))
+    fast_valve_close_button = tk.Button(root, text='CLOSE', fg='red', width=int(10/scale_down), command=lambda: toggle_valve('fast', 1, 'close'))
     fast_valve_close_button.place(x=125/scale_down, y=180/scale_down)
 
     slow_valve_1_indicator = tk.Canvas(root,width=int(29/scale_down), height=int(43/scale_down))
@@ -250,12 +271,12 @@ if __name__ == '__main__':
 
     abs_gauge_label = tk.Label(text='Absolute Pressure Gauge Reading:\n0 Torr')
     abs_gauge_label.grid(row=0, column=4, columnspan=2)
-    abs_gauge_graph = tk.Canvas(root, width=200, height=200, background='grey')
+    abs_gauge_graph = tk.Canvas(root, width=300, height=300, background='grey')
     abs_gauge_graph.grid(row=1, column=4, columnspan=2)
 
     diff_gauge_label = tk.Label(text='Differential Pressure Gauge Reading:')
     diff_gauge_label.grid(row=3, column=4, columnspan=2)
-    diff_gauge_graph = tk.Canvas(root, width=200, height=200, background='grey')
+    diff_gauge_graph = tk.Canvas(root, width=300, height=300, background='grey')
     diff_gauge_graph.grid(row=4, column=4, columnspan=2)
 
     desired_pressure_label = tk.Label(text='Desired Pressure:')
@@ -318,21 +339,73 @@ if __name__ == '__main__':
     filling = False
     pumping_down = False
     last_voltage = 0
-    average_samples = 100
+    average_samples = 20 # number of samples per evaluation
+    cs = []
+    vs = []
+    v_diffs = []
+    c_diffs = []
+    times = []
+    abs_pressure_plot = []
+    diff_pressure_plot = []
+    import time
 
+    icount=0
     while True:
+        tdum0 = time.time()
         readings = list(zip(*[(GPI_driver.get_abs_gauge(),
                                GPI_driver.get_diff_gauge()) 
                               for i in range(average_samples)]))
+        tdum1 = time.time()
+
         abs_reading = sum(readings[0])/len(readings[0])
-        abs_voltage = uint32_to_volts(int(abs_reading))
-        abs_pressure = abs_torr(abs_reading)
-        print(abs_reading, signed_conversion(abs_reading), abs_voltage, abs_pressure)
+        #abs_voltage = uint32_to_volts(abs_reading)
+        abs_voltage =  0.0661+4.526*uint32_to_volts(abs_reading) # calibration for IN 1 of W7XRP2 with a 0.252 divider 
+        vs.append(abs_voltage)
+        cs.append(abs_reading)
+        vs = vs[-100:]
+        cs = cs[-100:]
+        abs_pressure = abs_torr(abs_voltage)
+        #print('icount= ',icount,'\t time = ', "{:.4f}".format(tdum1-tdum0), 'sec', ' Reading:',"{:.2f}".format(abs_reading),'\tVoltage:', "{:.4f}".format(abs_voltage),'\tabs pressure:',"{:.3f}".format(abs_pressure),'\tsigma_c:',"{:.4e}".format(np.std(cs)/np.mean(cs)),'\tsigma_v:',"{:.4e}".format(np.std(vs)/np.mean(vs)))
+        #print(abs_reading, signed_conversion(abs_reading), abs_voltage, abs_pressure)
         
         diff_reading = sum(readings[1])/len(readings[1])
-        diff_pressure = diff_torr(diff_reading)
+        diff_voltage = 0.047+3.329*uint32_to_volts(diff_reading) # calibration for IN 2 of W7XRP2 with a 0.342 divider
+        v_diffs.append(diff_voltage)
+        c_diffs.append(diff_reading)
+        v_diffs = v_diffs[-100:]
+        c_diffs = c_diffs[-100:]
+        diff_pressure = diff_torr(diff_voltage)
+        #print('icount= ',icount,'\t time = ', "{:.4f}".format(tdum1-tdum0), 'sec', ' Reading:',"{:.4f}".format(diff_reading),'\tVoltage:', "{:.4f}".format(diff_voltage),'\tdiff pressure:',"{:.3f}".format(diff_pressure),'\tsigma_c:',"{:.4e}".format(np.std(c_diffs)/np.mean(c_diffs)),'\tsigma_v:',"{:.4e}".format(np.std(v_diffs)/np.mean(v_diffs)))     
+        icount = icount+1
         abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % abs_pressure
         diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % diff_pressure
+
+        now = time.time()
+        abs_pressure_plot.append(abs_pressure)
+        diff_pressure_plot.append(diff_pressure)
+        times.append(tdum1)
+        for it, t in enumerate(times):
+            if now-t > 30:
+                del times[it]
+                del abs_pressure_plot[it]
+                del diff_pressure_plot[it]
+
+        abs_fig = Figure(figsize=(3,3))
+        abs_fig.subplots_adjust(left=0.2)
+        abs_dum = abs_fig.add_subplot(111)
+        plottimes = np.linspace(times[0]-now, 0, len(times))
+        abs_dum.plot(plottimes, abs_pressure_plot)
+        plt.pause(0.05)
+
+        abs_plot = draw_plot(abs_gauge_graph, abs_fig)
+
+        diff_fig = Figure(figsize=(3,3))
+        diff_fig.subplots_adjust(left=0.2)
+        diff_dum = diff_fig.add_subplot(111)
+        diff_dum.plot(plottimes, diff_pressure_plot)
+        plt.pause(0.05)
+
+        diff_plot = draw_plot(diff_gauge_graph, diff_fig)
         
         if filling:
             sleep_seconds = 0.2
@@ -353,8 +426,8 @@ if __name__ == '__main__':
             if abs_pressure > 0 and desired_pressure > 0:                    
                 if not GPI_driver.get_slow_2_trigger():
                     toggle_valve('slow', 2, 'open', no_confirm=True)
-                if (abs_voltage < 0.02 and last_voltage < 0.02) or \
-                   abs_pressure < desired_pressure:
+                if (abs_voltage < 0.02 and last_voltage < 0.02):# or \
+#                   abs_pressure < desired_pressure:
                     toggle_valve('slow', 2, 'close', no_confirm=True)
                     pumping_down = False
                     filling = True
