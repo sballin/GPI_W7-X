@@ -18,6 +18,7 @@ import matplotlib.backends.tkagg as tkagg
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
+
 class DummyDriver(object):
     '''
     Lets the GUI window open even if Red Pitaya is not reachable.
@@ -183,63 +184,82 @@ def signed_conversion(reading):
     
     
 def puff():
-    timing_1_entry.config(state='disabled')
-    timing_2_entry.config(state='disabled')
     pt1 = timing_1_entry.get()
     pt1p = local_permission_1_var.get()
     pt2 = timing_2_entry.get()
     pt2p = local_permission_2_var.get()
-    T1relT0 = 30
     if (pt1 and pt1p) or (pt2 and pt2p):
-        print('T0 received, T1 in', T1relT0)
+        timing_1_entry.config(state='disabled')
+        timing_2_entry.config(state='disabled')
+        
+        # Convert the puff times into floats 
         never = 1e10
         pt1 = float(pt1) if pt1 else never
         pt2 = float(pt2) if pt2 else never
-        donePrep = False
-        doneT1 = False
-        donePuff1 = False
-        doneClose1 = False
-        donePuff2 = False
-        doneClose2 = False
+        
+        # Loop until all actions are completed while monitoring diff pressure
+        donePrep = doneT1 = donePuff1 = doneClose1 = donePuff2 = doneClose2 = doneSave = False
+        closeTime = never
         T0 = time.time()
+        T1relative = 10
+        T1 = T0+T1relative
+        diffPressure = []
+        diffPressureTimes = []
+        print('T0 received, T1 in',T1relative)
         while not (donePrep and doneT1 and donePuff1 and doneClose1 
-                   and donePuff2 and doneClose2):
-            timeSinceT0 = time.time()-T0
-            if not donePrep and timeSinceT0 > T1relT0-5+min(pt1, pt2):    
-                print('T0 +', timeSinceT0, 'closing V3')
+                   and donePuff2 and doneClose2 and doneSave):
+            t = time.time()
+            if not donePrep and t > T1-5+min(pt1, pt2):    
+                print('T0 +', t-T0, 'closing V3')
                 toggle_valve('slow', 3, 'close', no_confirm=True)
                 donePrep = True
-            if not doneT1 and timeSinceT0 > T1relT0:
-                print('T0 +', timeSinceT0, 'T1 received')
+            
+            if not doneT1 and t > T1:
+                print('T0 +', t-T0, 'T1 received')
                 doneT1 = True
+            
             if pt1p and pt1 < never:
-                if not donePuff1 and timeSinceT0 > T1relT0+pt1:
-                    print('T0 +', timeSinceT0, 'opening FV')
+                t = time.time()
+                if not donePuff1 and t > T1+pt1:
+                    print('T1 +', t-T1, 'opening FV')
                     toggle_valve('fast', 1, 'open', no_confirm=True)
                     donePuff1 = True
-                if not doneClose1 and timeSinceT0 > T1relT0+pt1+1:
-                    print('T0 +', timeSinceT0, 'closing FV')
+                if not doneClose1 and t > T1+pt1+1:
+                    print('T1 +', t-T1, 'closing FV')
                     toggle_valve('fast', 1, 'close', no_confirm=True)
                     doneClose1 = True
+                    closeTime = t
             else:
                 donePuff1 = True
                 doneClose1 = True
             if pt2p and pt2 < never:
-                if not donePuff2 and timeSinceT0 > T1relT0+pt2:
-                    print('T0 +', timeSinceT0, 'opening FV')
+                t = time.time()
+                if not donePuff2 and t > T1+pt2:
+                    print('T1 +', t-T1, 'opening FV')
                     toggle_valve('fast', 1, 'open', no_confirm=True)
                     donePuff2 = True
-                if not doneClose2 and timeSinceT0 > T1relT0+pt2+1:
-                    print('T0 +', timeSinceT0, 'closing FV')
+                if not doneClose2 and t > T1+pt2+1:
+                    print('T1 +', t-T1, 'closing FV')
                     toggle_valve('fast', 1, 'close', no_confirm=True)
                     doneClose2 = True
+                    closeTime = t
             else:
                 donePuff2 = True
                 doneClose2 = True
-        
+            
+            if not doneSave and t > closeTime + 5:
+                np.save('diff_pressures/diff_pressure_%d.npy' % int(t), [diffPressureTimes, diffPressure])
+                # matplotlib.use('Agg')
+                plt.plot(diffPressureTimes, diffPressure)
+                plt.xlabel('t-T1 (s)')
+                plt.ylabel('Diff. pressure (Torr)')
+                plt.savefig('diff_pressures/diff_pressure_%d.png' % int(t))
+                doneSave = True
+            diffPressureTimes.append(time.time()-T1)
+            diffPressure.append(GPI_driver.get_diff_gauge())
+        toggle_valve('slow', 3, 'open', no_confirm=True)
         timing_1_entry.config(state='normal')
         timing_2_entry.config(state='normal')
-        
 
 
 if __name__ == '__main__':
@@ -415,7 +435,7 @@ if __name__ == '__main__':
     abs_pressure_plot = []
     diff_pressure_plot = []
 
-    # icount=0
+    icount=0
     while True:
         tdum0 = time.time()
         readings = list(zip(*[(GPI_driver.get_abs_gauge(),
