@@ -20,9 +20,12 @@ from matplotlib.figure import Figure
 
 class DummyDriver(object):
     '''
-    Lets the window open even if RP is not reachable.
+    Lets the GUI window open even if Red Pitaya is not reachable.
     '''
     def __getattr__(self, name):
+        '''
+        Returns 0 for all Red Pitaya functions instead of raising errors.
+        '''
         def method(*args):
             return 0
         return method
@@ -149,6 +152,7 @@ def fill():
 def pump_refill():
     globals()['pumping_down'] = True
 
+
 def draw_plot(canvas, figure):
     figure_canvas_agg = FigureCanvasAgg(figure)
     figure_canvas_agg.draw()
@@ -176,6 +180,66 @@ def signed_conversion(reading):
         intNum = int(binConv, 2)
     #print(binNumber, intNum)
     return intNum
+    
+    
+def puff():
+    timing_1_entry.config(state='disabled')
+    timing_2_entry.config(state='disabled')
+    pt1 = timing_1_entry.get()
+    pt1p = local_permission_1_var.get()
+    pt2 = timing_2_entry.get()
+    pt2p = local_permission_2_var.get()
+    T1relT0 = 30
+    if (pt1 and pt1p) or (pt2 and pt2p):
+        print('T0 received, T1 in', T1relT0)
+        never = 1e10
+        pt1 = float(pt1) if pt1 else never
+        pt2 = float(pt2) if pt2 else never
+        donePrep = False
+        doneT1 = False
+        donePuff1 = False
+        doneClose1 = False
+        donePuff2 = False
+        doneClose2 = False
+        T0 = time.time()
+        while not (donePrep and doneT1 and donePuff1 and doneClose1 
+                   and donePuff2 and doneClose2):
+            timeSinceT0 = time.time()-T0
+            if not donePrep and timeSinceT0 > T1relT0-5+min(pt1, pt2):    
+                print('T0 +', timeSinceT0, 'closing V3')
+                toggle_valve('slow', 3, 'close', no_confirm=True)
+                donePrep = True
+            if not doneT1 and timeSinceT0 > T1relT0:
+                print('T0 +', timeSinceT0, 'T1 received')
+                doneT1 = True
+            if pt1p and pt1 < never:
+                if not donePuff1 and timeSinceT0 > T1relT0+pt1:
+                    print('T0 +', timeSinceT0, 'opening FV')
+                    toggle_valve('fast', 1, 'open', no_confirm=True)
+                    donePuff1 = True
+                if not doneClose1 and timeSinceT0 > T1relT0+pt1+1:
+                    print('T0 +', timeSinceT0, 'closing FV')
+                    toggle_valve('fast', 1, 'close', no_confirm=True)
+                    doneClose1 = True
+            else:
+                donePuff1 = True
+                doneClose1 = True
+            if pt2p and pt2 < never:
+                if not donePuff2 and timeSinceT0 > T1relT0+pt2:
+                    print('T0 +', timeSinceT0, 'opening FV')
+                    toggle_valve('fast', 1, 'open', no_confirm=True)
+                    donePuff2 = True
+                if not doneClose2 and timeSinceT0 > T1relT0+pt2+1:
+                    print('T0 +', timeSinceT0, 'closing FV')
+                    toggle_valve('fast', 1, 'close', no_confirm=True)
+                    doneClose2 = True
+            else:
+                donePuff2 = True
+                doneClose2 = True
+        
+        timing_1_entry.config(state='normal')
+        timing_2_entry.config(state='normal')
+        
 
 
 if __name__ == '__main__':
@@ -188,10 +252,10 @@ if __name__ == '__main__':
     except Exception as e:
         print(e)
         GPI_driver = DummyDriver()
-        root.title('GPI Valve Control (NOT CONNECTED)')
+        root.title('GPI Valve Control (RED PITAYA NOT FOUND)')
 
     scale_down = 1
-    win_width = int(1600/scale_down)
+    win_width = int(1500/scale_down)
     win_height = int(880/scale_down)
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
@@ -330,6 +394,9 @@ if __name__ == '__main__':
     W7X_permission_status = tk.Label(text='Granted/Forbidden')
     W7X_permission_status.grid(row=10, column=5)
 
+    GPI_safe_state_button = tk.Button(root, text='T0 trigger', width=10, command=puff)
+    GPI_safe_state_button.grid(row=11, column=5)
+    
     GPI_safe_state_label = tk.Label(text='GPI Safe State:')
     GPI_safe_state_label.grid(row=12, column=4)
     GPI_safe_state_button = tk.Button(root, text='ENABLE', width=10)
@@ -347,9 +414,8 @@ if __name__ == '__main__':
     times = []
     abs_pressure_plot = []
     diff_pressure_plot = []
-    import time
 
-    icount=0
+    # icount=0
     while True:
         tdum0 = time.time()
         readings = list(zip(*[(GPI_driver.get_abs_gauge(),
