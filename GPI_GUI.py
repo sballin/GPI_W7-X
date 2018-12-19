@@ -110,6 +110,11 @@ def toggle_valve(speed, valve_number, command, no_confirm=False):
     else:
         _confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
         
+        
+def toggle_permission(puff_number):
+    permission = globals()['local_permission_%d_var' % puff_number].get()
+    getattr(GPI_driver, 'set_fast_%d_permission' % puff_number)(int(permission))
+        
 
 def print_check(check_number):
     if globals()['local_permission_%s_var' % check_number].get():
@@ -200,6 +205,7 @@ def puff():
         # Loop until all actions are completed while monitoring diff pressure
         donePrep = doneT1 = donePuff1 = doneClose1 = donePuff2 = doneClose2 = doneSave = False
         closeTime = never
+        FVduration = 1
         T0 = time.time()
         T1relative = 10
         T1 = T0+T1relative
@@ -212,21 +218,27 @@ def puff():
             if not donePrep and t > T1-5+min(pt1, pt2):    
                 print('T0 +', t-T0, 'closing V3')
                 toggle_valve('slow', 3, 'close', no_confirm=True)
+                # Set fast timings in milliseconds
+                if pt1p and pt1p < never:
+                    GPI_driver.set_fast_1_trigger(pt1*1000) 
+                    GPI_driver.set_fast_1_duration(FVduration*1000)
+                if pt2p and pt2 < never:
+                    GPI_driver.set_fast_2_trigger(pt2*1000)
+                    GPI_driver.set_fast_2_duration(FVduration*1000)
+                GPI_driver.reset_time(max(pt1+FVduration, pt2+FV)*1000)
                 donePrep = True
             
             if not doneT1 and t > T1:
-                print('T0 +', t-T0, 'T1 received')
+                print('T0 +', t-T0, 'T1 should have been received')
                 doneT1 = True
             
             if pt1p and pt1 < never:
                 t = time.time()
                 if not donePuff1 and t > T1+pt1:
-                    print('T1 +', t-T1, 'opening FV')
-                    toggle_valve('fast', 1, 'open', no_confirm=True)
+                    print('T1 +', t-T1, 'FV should have opened')
                     donePuff1 = True
-                if not doneClose1 and t > T1+pt1+1:
-                    print('T1 +', t-T1, 'closing FV')
-                    toggle_valve('fast', 1, 'close', no_confirm=True)
+                if not doneClose1 and t > T1+pt1+FVduration:
+                    print('T1 +', t-T1, 'FV should have closed')
                     doneClose1 = True
                     closeTime = t
             else:
@@ -235,12 +247,10 @@ def puff():
             if pt2p and pt2 < never:
                 t = time.time()
                 if not donePuff2 and t > T1+pt2:
-                    print('T1 +', t-T1, 'opening FV')
-                    toggle_valve('fast', 1, 'open', no_confirm=True)
+                    print('T1 +', t-T1, 'FV should have opened')
                     donePuff2 = True
-                if not doneClose2 and t > T1+pt2+1:
-                    print('T1 +', t-T1, 'closing FV')
-                    toggle_valve('fast', 1, 'close', no_confirm=True)
+                if not doneClose2 and t > T1+pt2+FVduration:
+                    print('T1 +', t-T1, 'FV should have closed')
                     doneClose2 = True
                     closeTime = t
             else:
@@ -313,7 +323,7 @@ if __name__ == '__main__':
     slow_valve_1_status = slow_valve_1_indicator.create_rectangle(0, 0, int(29/scale_down), int(43/scale_down))
     slow_valve_1_indicator.itemconfig(slow_valve_1_status, fill='red')
 
-    get_slow_status(1)
+    # get_slow_status(1)
     slow_valve_1_label_back = tk.Label(text='V5', width=int(13/scale_down))
     slow_valve_1_label_back.place(x=475/scale_down, y=380/scale_down)
 
@@ -383,7 +393,7 @@ if __name__ == '__main__':
 
     local_permission_1_var = tk.IntVar()
 
-    local_permission_1_check = tk.Checkbutton(root, variable=local_permission_1_var, command=lambda: print_check(1))
+    local_permission_1_check = tk.Checkbutton(root, variable=local_permission_1_var, command=lambda: toggle_permission(1))
     local_permission_1_check.grid(row=10, column=1)
     timing_1_entry = tk.Entry(root, width=10)
 
@@ -402,7 +412,7 @@ if __name__ == '__main__':
 
     local_permission_2_var = tk.IntVar()
 
-    local_permission_2_check = tk.Checkbutton(root, variable=local_permission_2_var, command=lambda: print_check(2))
+    local_permission_2_check = tk.Checkbutton(root, variable=local_permission_2_var, command=lambda: toggle_permission(2))
     local_permission_2_check.grid(row=10, column=3)
     timing_2_entry = tk.Entry(root, width=10)
     timing_2_entry.grid(row=11, column=3)
@@ -414,8 +424,8 @@ if __name__ == '__main__':
     W7X_permission_status = tk.Label(text='Granted/Forbidden')
     W7X_permission_status.grid(row=10, column=5)
 
-    GPI_safe_state_button = tk.Button(root, text='T0 trigger', width=10, command=puff)
-    GPI_safe_state_button.grid(row=11, column=5)
+    GPI_T0_button = tk.Button(root, text='T0 trigger', width=10, command=puff)
+    GPI_T0_button.grid(row=11, column=5)
     
     GPI_safe_state_label = tk.Label(text='GPI Safe State:')
     GPI_safe_state_label.grid(row=12, column=4)
