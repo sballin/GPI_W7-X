@@ -15,35 +15,17 @@ entity outputs is
         slow_2_trigger_ctl      : in std_logic_vector(31 downto 0);
         slow_3_trigger_ctl      : in std_logic_vector(31 downto 0);
         slow_4_trigger_ctl      : in std_logic_vector(31 downto 0);
-        W7X_permission_out_ctl  : in std_logic_vector(11 downto 0);
-        fast_1_trigger_ctl      : in std_logic_vector(31 downto 0);
-        fast_1_permission_1_ctl : in std_logic_vector(31 downto 0);
-        fast_1_duration_1_ctl   : in std_logic_vector(31 downto 0);
-        fast_1_permission_2_ctl : in std_logic_vector(31 downto 0);
-        fast_1_duration_2_ctl   : in std_logic_vector(31 downto 0);
-        fast_2_trigger_ctl      : in std_logic_vector(31 downto 0);
-        fast_2_permission_1_ctl : in std_logic_vector(31 downto 0);
-        fast_2_duration_1_ctl   : in std_logic_vector(31 downto 0);
-        fast_2_permission_2_ctl : in std_logic_vector(31 downto 0);
-        fast_2_duration_2_ctl   : in std_logic_vector(31 downto 0);
-
-
+        fast_1_permission_ctl : in std_logic_vector(31 downto 0);
+        fast_2_permission_ctl : in std_logic_vector(31 downto 0);
+        
         GPI_safe_state_pin      : out std_logic;
         slow_1_trigger_pin      : out std_logic;
         slow_2_trigger_pin      : out std_logic;
         slow_3_trigger_pin      : out std_logic;
         slow_4_trigger_pin      : out std_logic;
-        W7X_permission_out_pin  : out std_logic;
-        fast_1_trigger_pin      : out std_logic;
-        fast_1_permission_1_pin : out std_logic;
-        fast_1_duration_1_pin   : out std_logic;
-        fast_1_permission_2_pin : out std_logic;
-        fast_1_duration_2_pin   : out std_logic;
-        fast_2_trigger_pin      : out std_logic;
-        fast_2_permission_1_pin : out std_logic;
-        fast_2_duration_1_pin   : out std_logic;
-        fast_2_permission_2_pin : out std_logic;
-        fast_2_duration_2_pin   : out std_logic
+        fast_1_permission : out std_logic;
+        fast_2_permission : out std_logic
+
     );
 
 end entity outputs;
@@ -107,126 +89,25 @@ begin
         end if;
     end process Pass_through_4;
 
-    Pass_through_5 : process(adc_clk)
+   Pass_through_5 : process(adc_clk)
     begin
         if (rising_edge(adc_clk)) then
-            if (W7X_permission_out_ctl = "000000000000") then
-                W7X_permission_out_pin <= '0';
+            if (fast_1_permission_ctl /= "00000000000000000000000000000000") then
+                fast_1_permission <= '1';
             else
-                W7X_permission_out_pin <= '1';
+                fast_1_permission <= '0';
             end if;
         end if;
     end process Pass_through_5;
-
-    Pass_through_6 : process(adc_clk)
+    
+   Pass_through_6 : process(adc_clk)
     begin
         if (rising_edge(adc_clk)) then
-            if (fast_1_trigger_ctl /= "00000000000000000000000000000000") then
-                fast_1_trigger_pin <= '1';
+            if (fast_2_permission_ctl /= "00000000000000000000000000000000") then
+                fast_2_permission <= '1';
             else
-                fast_1_trigger_pin <= '0';
+                fast_2_permission <= '0';
             end if;
         end if;
     end process Pass_through_6;
-
-    Pass_through_7 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_1_permission_1_ctl /= "00000000000000000000000000000000") then
-                fast_1_permission_1_pin <= '1';
-            else
-                fast_1_permission_1_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_7;
-
-    Pass_through_8 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_1_duration_1_ctl /= "00000000000000000000000000000000") then
-                fast_1_duration_1_pin <= '1';
-            else
-                fast_1_duration_1_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_8;
-
-    Pass_through_9 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_1_permission_2_ctl /= "00000000000000000000000000000000") then
-                fast_1_permission_2_pin <= '1';
-            else
-                fast_1_permission_2_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_9;
-
-    Pass_through_10 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_1_duration_2_ctl /= "00000000000000000000000000000000") then
-                fast_1_duration_2_pin <= '1';
-            else
-                fast_1_duration_2_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_10;
-
-    Pass_through_11 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_2_trigger_ctl /= "00000000000000000000000000000000") then
-                fast_2_trigger_pin <= '1';
-            else
-                fast_2_trigger_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_11;
-
-    Pass_through_12 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_2_permission_1_ctl /= "00000000000000000000000000000000") then
-                fast_2_permission_1_pin <= '1';
-            else
-                fast_2_permission_1_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_12;
-
-    Pass_through_13 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_2_duration_1_ctl /= "00000000000000000000000000000000") then
-                fast_2_duration_1_pin <= '1';
-            else
-                fast_2_duration_1_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_13;
-
-    Pass_through_14 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_2_permission_2_ctl /= "00000000000000000000000000000000") then
-                fast_2_permission_2_pin <= '1';
-            else
-                fast_2_permission_2_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_14;
-
-    Pass_through_15 : process(adc_clk)
-    begin
-        if (rising_edge(adc_clk)) then
-            if (fast_2_duration_2_ctl /= "00000000000000000000000000000000") then
-                fast_2_duration_2_pin <= '1';
-            else
-                fast_2_duration_2_pin <= '0';
-            end if;
-        end if;
-    end process Pass_through_15;
-    
-
 end architecture Behavioral;

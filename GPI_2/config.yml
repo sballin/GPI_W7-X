@@ -9,8 +9,9 @@ cores:
   - fpga/cores/axi_ctl_register_v1_0
   - fpga/cores/axi_sts_register_v1_0
   - fpga/cores/dna_reader_v1_0
-  - instruments/GPI_2/cores/data_collector_v1_0
-  - instruments/GPI_2/cores/outputs_v1_0
+  - instruments/GPI_3/cores/data_collector_v1_0
+  - instruments/GPI_3/cores/outputs_v1_0
+  - instruments/GPI_3/cores/trig_delay_v1_0
 
 memory:
   - name: control
@@ -34,23 +35,23 @@ control_registers:
   - slow_3_trigger
   - slow_4_trigger
   - fast_1_trigger
-  - fast_1_permission_1
-  - fast_1_duration_1
-  - fast_1_permission_2
-  - fast_1_duration_2
+  - fast_1_permission
+  - fast_1_duration
   - fast_2_trigger
-  - fast_2_permission_1
-  - fast_2_duration_1
-  - fast_2_permission_2
-  - fast_2_duration_2
+  - fast_2_permission
+  - fast_2_duration
+  - reset_time
 
 
 status_registers:
   - adc[n_adc]
-  - W7X_permission_in
   - W7X_timings
   - abs_gauge
   - diff_gauge
+  - slow_1_trigger_sts
+  - slow_2_trigger_sts
+  - slow_3_trigger_sts
+  - slow_4_trigger_sts
 
 parameters:
   fclk0: 166666667
@@ -62,7 +63,7 @@ parameters:
 xdc:
   - boards/red-pitaya/config/ports.xdc
   - boards/red-pitaya/config/clocks.xdc
-  - instruments/GPI_2/extension_connector.xdc
+  - instruments/GPI_3/expansion_connector.xdc
 
 
 drivers:
