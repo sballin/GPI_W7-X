@@ -138,8 +138,8 @@ class GUI:
         desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
 
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
-        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.fill)
-        pump_refill_button = ttk.Button(fill_controls_line2, text='Pump out and refill', command=self.pump_refill)
+        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.fill_loop)
+        pump_refill_button = ttk.Button(fill_controls_line2, text='Pump down and refill', command=self.pump_refill)
 
         self.local_permission_1_var = tk.IntVar()
 
@@ -150,7 +150,6 @@ class GUI:
         self.timing_1_entry.bind('<Return>', self.calc_clock_cycles)
         duration_1_entry = ttk.Entry(puff_controls_frame, width=10)
         duration_1_entry.bind('<Return>', self.calc_clock_cycles)
-
 
         self.local_permission_2_var = tk.IntVar()
 
@@ -163,10 +162,10 @@ class GUI:
         W7X_permission_check = tk.Checkbutton(permission_controls_frame, background=gray, state=tk.DISABLED)
         
         GPI_safe_state_label = tk.Label(permission_controls_frame, text='GPI safe state', background=gray)
-        self.GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state)
+        self.GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, state=tk.DISABLED)
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
-        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.puff)
+        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.puff_loop)
         
         self.gpi_routine_executing = False
         self.plots_need_update = True #False
@@ -186,6 +185,7 @@ class GUI:
         self.ax_diff = self.fig.add_subplot(212)
         self.setup_plots()
         # Plot tkinter setup
+        self.fig.set_tight_layout(True)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
         
@@ -262,52 +262,6 @@ class GUI:
         self.manage_plots_thread = threading.Thread(target=self.manage_plots, daemon=True)
         self.manage_plots_thread.start()
 
-        # while True:            
-            # if self.pressure_avg_times:
-            #     abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % self.abs_avg_pressures[-1]
-            #     diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % self.diff_avg_pressures[-1]
-
-            # now = time.time()
-            # abs_pressure_plot.append(abs_pressure)
-            # diff_pressure_plot.append(diff_pressure)
-
-            
-    #         if filling:
-    #             sleep_seconds = 0.2
-    #             if abs_pressure > 0 and desired_pressure > 0:
-    #                 if abs_pressure < desired_pressure:
-    #                     if not self.GPI_driver.get_slow_1_trigger():
-    #                         self.toggle_valve('V5', 'open', no_confirm=True)
-    #                 elif abs_pressure > 0.97*desired_pressure:
-    #                     self.toggle_valve('V5', 'close', no_confirm=True)
-    #                     filling = False
-    #             else:
-    #                 filling = False
-    #         else:
-    #             sleep_seconds = 1
-            
-    #         if pumping_down:
-    #             sleep_seconds = 0.2
-    #             if abs_pressure > 0 and desired_pressure > 0:                    
-    #                 if not self.GPI_driver.get_slow_2_trigger():
-    #                     self.toggle_valve('V4', 'open', no_confirm=True)
-    #                 if (abs_voltage < 0.02 and last_voltage < 0.02):# or \
-    # #                   abs_pressure < desired_pressure:
-    #                     self.toggle_valve('V4', 'close', no_confirm=True)
-    #                     pumping_down = False
-    #                     filling = True
-    #                     sleep_seconds = 1
-            
-    #         last_voltage = abs_voltage
-            # time.sleep(sleep_seconds)
-            
-        # while True:
-        #     # self.canvas.draw()
-        #     # Required for tkinter 
-        #     self.root.update_idletasks()
-        #     self.root.update()
-        #     time.sleep(1)
-
     def _quit_tkinter(self):
         self.root.quit()     # stops mainloop
         self.root.destroy()  # this is necessary on Windows to prevent
@@ -373,26 +327,29 @@ class GUI:
                 #               round(now-self.pressure_avg_times[-1],2)))
                 
     def setup_plots(self):
+        # Do not attempt to draw plots if no data has been collected
         relative_times = self.rel_avg_times
         if not relative_times:
             return
+        
+        # Absolute gauge plot setup
         self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2)
-        self.ax_abs.plot(relative_times[-1], self.abs_avg_pressures[-1], 'or', c='C0')
-        self.ax_abs.annotate('%.2f\n' % self.abs_avg_pressures[-1],xy=(relative_times[-1], self.abs_avg_pressures[-1]), ha='center', color='C0', weight='bold')
-        # self.ax_abs.set_title('Absolute gauge')
         self.ax_abs.set_ylabel('Torr', weight='bold')
         plt.setp(self.ax_abs.get_xticklabels(), visible=False)
-        self.ax_abs.grid(True)
+        self.ax_abs.grid(True, color='#c9dae5')
+        self.ax_abs.patch.set_facecolor('#e3eff7')
         
+        # Differential gauge plot setup
         self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2)
-        self.ax_diff.plot(relative_times[-1], self.diff_avg_pressures[-1], 'or', c='C1')
-        self.ax_diff.annotate('%.2f\n' % self.diff_avg_pressures[-1],xy=(relative_times[-1], self.diff_avg_pressures[-1]), ha='center', color='C1', weight='bold')
-        # self.ax_diff.set_title('Differential gauge')
         self.ax_diff.set_ylabel('Torr', weight='bold')
         self.ax_diff.set_xlabel('Seconds', weight='bold')
-        self.ax_diff.grid(True)
+        self.ax_diff.grid(True, color='#e5d5c7')
+        self.ax_diff.patch.set_facecolor('#f7ebe1')
         
-        self.fig.set_tight_layout(True)
+        # Update labels
+        #if self.pressure_avg_times:
+        #     abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % self.abs_avg_pressures[-1]
+        #     diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % self.diff_avg_pressures[-1]
                 
     def manage_plots(self):
         '''
@@ -448,6 +405,7 @@ class GUI:
         signal =      1         if command == 'open' else 0
         action_text = 'OPENING' if command == 'open' else 'CLOSING'
         fill =        'green'   if command == 'open' else 'red'
+        self.add_to_log(action_text + ' ' + valve_name)
         
         if valve_name == 'FV2':
             speed = 'fast'
@@ -493,17 +451,44 @@ class GUI:
         print(cycles_in_entry)
         print(cycles_in_duration)
         
-    def fill(self):
+    def pump_refill(self):
+        self.pumping_down = True
+        
+    def pump_down_loop(self):
+        if self.pumping_down:
+            sleep_seconds = 0.2
+            if abs_pressure > 0 and desired_pressure > 0:                    
+                if not self.GPI_driver.get_slow_2_trigger():
+                    self.toggle_valve('V4', 'open', no_confirm=True)
+                if (abs_voltage < 0.02 and last_voltage < 0.02):
+                    self.toggle_valve('V4', 'close', no_confirm=True)
+                    pumping_down = False
+                    filling = True
+                    sleep_seconds = 1
+        self.root.after(sleep_seconds, self.pump_down_loop)
+        
+    def fill_loop(self):
         desired_pressure = float(desired_pressure_entry.get())
         desired_volts = 10/5000*desired_pressure
         
         self.desired_pressure = desired_pressure
         self.filling = True
+        if filling:
+            sleep_seconds = 0.2
+            if abs_pressure > 0 and desired_pressure > 0:
+                if abs_pressure < desired_pressure:
+                    if not self.GPI_driver.get_slow_1_trigger():
+                        self.toggle_valve('V5', 'open', no_confirm=True)
+                elif abs_pressure > 0.97*desired_pressure:
+                    self.toggle_valve('V5', 'close', no_confirm=True)
+                    filling = False
+            else:
+                filling = False
+        else:
+            sleep_seconds = 1
+        self.root.after(sleep_seconds, self.fill_loop)
         
-    def pump_refill(self):
-        self.pumping_down = True
-        
-    def puff(self):
+    def puff_loop(self):
         pt1 = self.timing_1_entry.get()
         pt1p = self.local_permission_1_var.get()
         pt2 = self.timing_2_entry.get()
