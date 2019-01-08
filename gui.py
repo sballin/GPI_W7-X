@@ -9,9 +9,11 @@ Architecture
 
 from __future__ import print_function # for print to work inside lambda
 import tkinter as tk
+from tkinter import ttk
 from PIL import Image, ImageTk
 import os
 import time
+import datetime
 import threading
 import koheron 
 from GPI_2.GPI_2 import GPI_2
@@ -19,9 +21,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+import matplotlib.patches as mpatches
 
 
-UPDATE_INTERVAL = 1 # seconds between plot updates
+UPDATE_INTERVAL = 2 # seconds between plot updates
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 
 
@@ -69,7 +72,7 @@ def find_nearest(array, value):
     
 class FakeRedPitaya(object):
     '''
-    Lets the GUI window open even if Red Pitaya is not reachable.
+    Lets the GUI window open even if Red Pitaya cannot be reached.
     '''
     def __getattr__(self, name):
         '''
@@ -83,56 +86,41 @@ class FakeRedPitaya(object):
 class GUI:
     def __init__(self, root):
         self.root = root
-        try:
-            GPI_host = os.getenv('HOST', 'w7xrp2')
-            GPI_client = koheron.connect(GPI_host, name='GPI_2')
-            self.GPI_driver = GPI_2(GPI_client)
-            self.root.title('GPI Valve Control')
-        except Exception as e:
-            print(e)
-            self.GPI_driver = FakeRedPitaya()
-            self.root.title('GPI Valve Control (RED PITAYA NOT FOUND)')
-
-        win_width = int(1200)
-        win_height = int(880)
+        self.root.title('GPI Valve Control')
+        win_width = int(1020)
+        win_height = int(600)
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
         x = (self.screen_width / 2) - (win_width / 2)
         y = (self.screen_height / 2) - (win_height / 2)
         self.root.geometry('%dx%d+%d+%d' % (win_width, win_height, x, y))
-        # weight=1 means the element stretches with window resize, weight=0 (default) means its size stays fixed
-        self.root.columnconfigure(4, weight=1)
-        self.root.columnconfigure(5, weight=1)
-        self.root.rowconfigure(10, weight=1)
-        self.root.rowconfigure(11, weight=1)
-        self.root.rowconfigure(12, weight=1)
-        
         self.root.protocol('WM_DELETE_WINDOW', self._quit_tkinter)
-
+        s=ttk.Style()
+        s.theme_use('alt')
+        gray = '#C3C3C3'
+        self.root.config(background=gray)
+        
+        system_frame = tk.Frame(self.root, background=gray)
         image = Image.open('background.png')
-        image = image.resize((int(768/2), int(1200/2)))
+        image = image.resize((384, 600))
         photo = ImageTk.PhotoImage(image)
-        background = tk.Label(image=photo)
+        background = tk.Label(system_frame, image=photo)
         background.image = photo
-        background.grid(rowspan=10, columnspan=4)
+        background.configure(background='#C3C3C3')
 
-        self.FV2_indicator = tk.Label(self.root,width=3, height=1, text='FV2', fg='white', bg='red')
-        self.FV2_indicator.place(x=323, y=100)
+        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='red')
         # self.fast_valve_status = self.FV_indicator.create_rectangle(0, 0, int(29/scale_down), int(43/scale_down))
         # self.FV_indicator.itemconfig(self.fast_valve_status, fill='red')
         # self.FV_indicator.create_text(12, 8, text='FV2', anchor='nw', fill='white')
         self.FV2_indicator.bind("<Button-1>", lambda event: self.toggle_valve('FV2', 'open', no_confirm=True))
 
-        self.V5_indicator = tk.Label(self.root, width=2, height=1, text='V5', fg='white', bg='red')
-        self.V5_indicator.place(x=200, y=275)
+        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='red')
         self.V5_indicator.bind("<Button-1>", lambda event: self.toggle_valve('V5', 'open', no_confirm=True))
 
-        self.V4_indicator = tk.Label(self.root, width=1, height=1, text='V4', fg='white', bg='red')
-        self.V4_indicator.place(x=154, y=323)
+        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='red')
         self.V4_indicator.bind("<Button-1>", lambda event: self.toggle_valve('V4', 'open', no_confirm=True))
 
-        self.V3_indicator = tk.Label(self.root, width=2, height=1, text='V3', fg='white', bg='green')
-        self.V3_indicator.place(x=250, y=400)
+        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='green')
         self.V3_indicator.bind("<Button-1>", lambda event: self.toggle_valve('FV3', 'open', no_confirm=True))
 
         # abs_gauge_label = tk.Label(text='Absolute Pressure Gauge Reading:\n0 Torr')
@@ -143,64 +131,42 @@ class GUI:
         # diff_gauge_label = tk.Label(text='Differential Pressure Gauge Reading:')
         # diff_gauge_label.grid(row=3, column=4, columnspan=2)
 
-        desired_pressure_label = tk.Label(text='Desired Pressure:')
-        desired_pressure_label.grid(row=6, column=4)
-        desired_pressure_entry = tk.Entry(self.root, width=10)
-        desired_pressure_entry.grid(row=6, column=5)
+        controls_frame = tk.Frame(self.root, background=gray)
+        fill_controls_frame = tk.Frame(controls_frame, background=gray)
+        fill_controls_line1 = tk.Frame(fill_controls_frame, background=gray, pady=5)
+        desired_pressure_label = tk.Label(fill_controls_line1, text='Desired pressure (Torr):', background=gray)
+        desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
 
-        fill_button = tk.Button(self.root, text='Fill', width=10, command=self.fill)
-        fill_button.grid(row=7, column=4)
-
-        pump_refill_button = tk.Button(self.root, text='Pump & Refill', width=10, command=self.pump_refill)
-        pump_refill_button.grid(row=7, column=5)
-
-        local_permission_1_label = tk.Label(text='Local Permission #1')
-        local_permission_1_label.grid(row=10, column=0)
-        timing_1_label = tk.Label(text='FV2 Opening Timing #1')
-        timing_1_label.grid(row=11, column=0)
-        duration_1_label = tk.Label(text='Opening Duration #1')
-        duration_1_label.grid(row=12, column=0)
+        fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
+        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.fill)
+        pump_refill_button = ttk.Button(fill_controls_line2, text='Pump out and refill', command=self.pump_refill)
 
         self.local_permission_1_var = tk.IntVar()
 
-        local_permission_1_check = tk.Checkbutton(self.root, variable=self.local_permission_1_var, command=lambda: self.toggle_permission(1))
-        local_permission_1_check.grid(row=10, column=1)
-        self.timing_1_entry = tk.Entry(self.root, width=10)
+        puff_controls_frame = tk.Frame(controls_frame, background=gray)
+        local_permission_1_check = tk.Checkbutton(puff_controls_frame, variable=self.local_permission_1_var, command=lambda: self.toggle_permission(1), background=gray)
+        self.timing_1_entry = ttk.Entry(puff_controls_frame, width=10)
 
         self.timing_1_entry.bind('<Return>', self.calc_clock_cycles)
-        self.timing_1_entry.grid(row=11, column=1)
-        duration_1_entry = tk.Entry(self.root, width=10)
-        duration_1_entry.grid(row=12, column=1)
+        duration_1_entry = ttk.Entry(puff_controls_frame, width=10)
         duration_1_entry.bind('<Return>', self.calc_clock_cycles)
 
-        local_permission_2_label = tk.Label(text='Local Permission #2')
-        local_permission_2_label.grid(row=10, column=2)
-        timing_2_label = tk.Label(text='FV2 Opening Timing #2')
-        timing_2_label.grid(row=11, column=2)
-        duration_2_label = tk.Label(text='Opening Duration #2')
-        duration_2_label.grid(row=12, column=2)
 
         self.local_permission_2_var = tk.IntVar()
 
-        local_permission_2_check = tk.Checkbutton(self.root, variable=self.local_permission_2_var, command=lambda: self.toggle_permission(2))
-        local_permission_2_check.grid(row=10, column=3)
-        self.timing_2_entry = tk.Entry(self.root, width=10)
-        self.timing_2_entry.grid(row=11, column=3)
-        self.duration_2_entry = tk.Entry(self.root, width=10)
-        self.duration_2_entry.grid(row=12, column=3)
-
-        W7X_permission_label = tk.Label(text='W7-X Permission:')
-        W7X_permission_label.grid(row=10, column=4)
-        W7X_permission_status = tk.Label(text='Granted/Forbidden')
-        W7X_permission_status.grid(row=10, column=5)
-
-        GPI_T0_button = tk.Button(self.root, text='T0 trigger', width=10, command=self.puff)
-        GPI_T0_button.grid(row=11, column=5)
+        local_permission_2_check = tk.Checkbutton(puff_controls_frame, variable=self.local_permission_2_var, command=lambda: self.toggle_permission(2), background=gray)
+        self.timing_2_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_2_entry = ttk.Entry(puff_controls_frame, width=10)
         
-        GPI_safe_state_label = tk.Label(text='GPI Safe State:')
-        GPI_safe_state_label.grid(row=12, column=4)
-        GPI_safe_state_button = tk.Button(self.root, text='ENABLE', width=10)
-        GPI_safe_state_button.grid(row=12, column=5)
+        permission_controls_frame = tk.Frame(controls_frame, background=gray)
+        W7X_permission_label = tk.Label(permission_controls_frame, text='W7-X permission', background=gray)
+        W7X_permission_check = tk.Checkbutton(permission_controls_frame, background=gray, state=tk.DISABLED)
+        
+        GPI_safe_state_label = tk.Label(permission_controls_frame, text='GPI safe state', background=gray)
+        self.GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state)
+        
+        action_controls_frame = tk.Frame(controls_frame, background=gray)
+        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.puff)
         
         self.gpi_routine_executing = False
         self.plots_need_update = True #False
@@ -211,34 +177,92 @@ class GUI:
         self.pressure_avg_times = []
         self.abs_avg_pressures = []
         self.diff_avg_pressures = []
-
-        self.manage_pressures_thread = threading.Thread(target=self.manage_pressures, daemon=True)
-        self.manage_pressures_thread.start()
         
-        self.fig = Figure(figsize=(3,6))
+        self.fig = Figure(figsize=(3,6), dpi=100, facecolor=gray)
         self.fig.subplots_adjust(left=0.2)
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
-        self.ax_abs.set_ylabel('Pressure (Torr)')
         # Differential pressure plot matplotlib setup
         self.ax_diff = self.fig.add_subplot(212)
         self.setup_plots()
         # Plot tkinter setup
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
-        self.canvas.get_tk_widget().grid(row=1, column=4, columnspan=2)
         
-        # Start plotting thread
+        # GUI element placement
+        ## Column 1
+        background.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.V3_indicator.place(relx=.473, rely=.548, relwidth=.043, relheight=.038)
+        self.V4_indicator.place(relx=.22, rely=.422, relwidth=.045, relheight=.039)
+        self.V5_indicator.place(relx=.339, rely=.346, relwidth=.06, relheight=.026)
+        self.FV2_indicator.place(relx=.665, rely=.055, relwidth=.06, relheight=.026)
+        system_frame.pack(side=tk.LEFT)
+        ## Column 2
+        self.canvas.get_tk_widget().pack(side=tk.LEFT)
+        self.canvas.get_tk_widget().configure()
+        ## Column 3
+        ### Fill controls frame
+        desired_pressure_label.pack(side=tk.LEFT)
+        desired_pressure_entry.pack(side=tk.LEFT)
+        fill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        pump_refill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        fill_controls_line1.pack(side=tk.TOP, fill=tk.X)
+        fill_controls_line2.pack(side=tk.TOP, fill=tk.X)
+        fill_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
+        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
+        ### Puff controls frame
+        tk.Label(puff_controls_frame, text='Permission', background=gray).grid(row=0, column=7)
+        tk.Label(puff_controls_frame, text='Start (s)', background=gray).grid(row=0, column=8)
+        tk.Label(puff_controls_frame, text='Duration (s)', background=gray).grid(row=0, column=9)
+        tk.Label(puff_controls_frame, text='Puff 1', background=gray).grid(row=1, column=6)
+        tk.Label(puff_controls_frame, text='Puff 2', background=gray).grid(row=2, column=6)
+        local_permission_1_check.grid(row=1, column=7)
+        self.timing_1_entry.grid(row=1, column=8)
+        duration_1_entry.grid(row=1, column=9)
+        local_permission_2_check.grid(row=2, column=7)
+        self.timing_2_entry.grid(row=2, column=8)
+        self.duration_2_entry.grid(row=2, column=9)
+        puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
+        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
+        ### Permission controls frame
+        W7X_permission_label.pack(side=tk.LEFT)
+        W7X_permission_check.pack(side=tk.LEFT)
+        GPI_safe_state_label.pack(side=tk.LEFT)
+        self.GPI_safe_state_check.pack(side=tk.LEFT)
+        permission_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
+        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
+        ### Action controls frame
+        GPI_T0_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        action_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
+        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
+        ### Log
+        log_controls_frame = tk.Frame(controls_frame, background=gray)
+        label_log_controls_frame = tk.Frame(log_controls_frame, background=gray)
+        tk.Label(label_log_controls_frame, text='Event log', background=gray).pack(side=tk.LEFT, fill=tk.X)
+        label_log_controls_frame.pack(side=tk.TOP, fill=tk.X)
+        self.log = tk.Listbox(log_controls_frame, background=gray, highlightbackground=gray)
+        self.log.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        log_controls_frame.pack(side=tk.TOP, fill=tk.BOTH, pady=10, expand=True)
+        controls_frame.pack(side=tk.LEFT, fill=tk.BOTH)
+        
+        self.add_to_log('GUI initialized')
+        
+        try:
+            GPI_host = os.getenv('HOST', 'w7xrp2')
+            GPI_client = koheron.connect(GPI_host, name='GPI_2')
+            self.add_to_log('Connected to Red Pitaya')
+            self.GPI_driver = GPI_2(GPI_client)
+        except Exception as e:
+            print(e)
+            self.GPI_driver = FakeRedPitaya()
+            self.add_to_log('Red Pitaya unreachable - simulating...')
+        
+        self.manage_pressures_thread = threading.Thread(target=self.manage_pressures, daemon=True)
+        self.manage_pressures_thread.start()
         self.manage_plots_thread = threading.Thread(target=self.manage_plots, daemon=True)
         self.manage_plots_thread.start()
 
-        # while True:
-            # x = root.winfo_pointerx()
-            # y = root.winfo_pointery()
-            # abs_coord_x = root.winfo_pointerx() - root.winfo_rootx()
-            # abs_coord_y = root.winfo_pointery() - root.winfo_rooty()
-            # print(abs_coord_x, abs_coord_y)
-            
+        # while True:            
             # if self.pressure_avg_times:
             #     abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % self.abs_avg_pressures[-1]
             #     diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % self.diff_avg_pressures[-1]
@@ -288,6 +312,10 @@ class GUI:
         self.root.quit()     # stops mainloop
         self.root.destroy()  # this is necessary on Windows to prevent
                         # Fatal Python Error: PyEval_RestoreThread: NULL tstate
+                        
+    def handle_safe_state(self):
+        checkbox_status = self.GPI_safe_state_check.getint()
+        self.GPI_driver.set_GPI_safe_state(checkbox_status)
 
     def abs_torr(self):
         abs_counts = self.GPI_driver.get_abs_gauge()
@@ -302,7 +330,7 @@ class GUI:
     def manage_pressures(self):
         last_number_crunch = 0
         while True:
-            time.sleep(1e-4) # REMOVE FOR REAL RED PITAYA
+            time.sleep(1e-3) # REMOVE FOR REAL RED PITAYA
             self.pressure_times.append(time.time())
             
             # Append pressure readings to fast timeseries
@@ -346,17 +374,25 @@ class GUI:
                 
     def setup_plots(self):
         relative_times = self.rel_avg_times
-        self.ax_abs.set_title('Absolute gauge pressure')
+        if not relative_times:
+            return
+        self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2)
+        self.ax_abs.plot(relative_times[-1], self.abs_avg_pressures[-1], 'or', c='C0')
+        self.ax_abs.annotate('%.2f\n' % self.abs_avg_pressures[-1],xy=(relative_times[-1], self.abs_avg_pressures[-1]), ha='center', color='C0', weight='bold')
+        # self.ax_abs.set_title('Absolute gauge')
         self.ax_abs.set_ylabel('Torr', weight='bold')
         plt.setp(self.ax_abs.get_xticklabels(), visible=False)
         self.ax_abs.grid(True)
-        self.ax_diff.set_title('Differential gauge pressure')
+        
+        self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2)
+        self.ax_diff.plot(relative_times[-1], self.diff_avg_pressures[-1], 'or', c='C1')
+        self.ax_diff.annotate('%.2f\n' % self.diff_avg_pressures[-1],xy=(relative_times[-1], self.diff_avg_pressures[-1]), ha='center', color='C1', weight='bold')
+        # self.ax_diff.set_title('Differential gauge')
         self.ax_diff.set_ylabel('Torr', weight='bold')
         self.ax_diff.set_xlabel('Seconds', weight='bold')
-        self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0')
-        self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1')
         self.ax_diff.grid(True)
-        plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=10.0)
+        
+        self.fig.set_tight_layout(True)
                 
     def manage_plots(self):
         '''
@@ -439,6 +475,11 @@ class GUI:
     def toggle_permission(self, puff_number):
         permission = getattr(self, 'local_permission_%d_var' % puff_number).get()
         getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(int(permission))
+        
+    def add_to_log(self, text):
+        time_string = datetime.datetime.now().strftime('%H:%M:%S')
+        self.log.insert(tk.END, ' ' + time_string + ' ' + text)
+        self.log.yview(tk.END)
 
     def print_check(self, check_number):
         if globals()['local_permission_%s_var' % check_number].get():
