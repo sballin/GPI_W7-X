@@ -3,8 +3,16 @@ GUI for valve control in GPI system at W7-X. Original code by Kevin Tang.
 
 Architecture
 ------------
-- manage_pressures thread records fast and averaged pressure readings
-- manage_plots thread updates plots when required
+- thread_pressures records fast and averaged pressure readings
+- thread_plots updates plots when required
+
+TODO: fix 0 entry in start time
+TODO: require 5 entries less than 0 torr to stop pumping down
+TODO: save values only starting 1 second before T1
+TODO: fix red pitaya reading bad values (simulate)
+TODO: fix plots (see how old code does it)
+TODO: fix threads messing with RP command reliability
+TODO: fix join blocking everything else
 '''
 
 from __future__ import print_function # for print to work inside lambda
@@ -21,20 +29,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
-import matplotlib.patches as mpatches
 
 
-UPDATE_INTERVAL = 2 # seconds between plot updates
+UPDATE_INTERVAL = 2  # seconds between plot updates
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
+DEFAULT_PUFF = 0.05  # seconds duration for each puff 
+LOOP_SLEEP = 0.2 # seconds between pump/fill loop iterations
+PRETRIGGER = 5 # seconds between T0 and T1
+FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
+PUMPED_OUT = 0 # Torr, desired pumped out pressure
+SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/' # for puff pressure data
 
 
 def uint32_to_volts(reading):
-    measured=(2/(2**14-1)*signed_conversion(reading))
-    #return 0.0661+4.526*measured # for 1 V jumper and the 0.252 voltage divider
-    #return 0.01097+1.135*measured  # for 1V jumper and no voltage divider
-    #return 0.3917+1.448*measured # for 20V jumper
-    return measured #to return the the RP measured voltage (no calibration)                  
-    #return (20./(2**13-1)*signed_conversion(reading)) # first 1 should be changed to 20 if the jumper is toggled
+    '''
+    Not really volts, but proportional. 
+    Calibration is inside diff_torr and abs_torr functions.
+    '''
+    return (2/(2**14-1)*signed_conversion(reading))
     
         
 def signed_conversion(reading):
@@ -66,8 +78,12 @@ def find_nearest(array, value):
     idx = np.searchsorted(array, value, side='left')
     if idx > 0 and (idx == len(array) or np.fabs(value - array[idx-1]) < np.fabs(value - array[idx])):
         return idx-1
-    else:
-        return idx
+    return idx
+        
+        
+def start_thread(method):
+    thread = threading.Thread(target=method, daemon=True)
+    thread.start()
            
     
 class FakeRedPitaya(object):
@@ -109,66 +125,55 @@ class GUI:
         background.configure(background='#C3C3C3')
 
         self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='red')
-        # self.fast_valve_status = self.FV_indicator.create_rectangle(0, 0, int(29/scale_down), int(43/scale_down))
-        # self.FV_indicator.itemconfig(self.fast_valve_status, fill='red')
-        # self.FV_indicator.create_text(12, 8, text='FV2', anchor='nw', fill='white')
-        self.FV2_indicator.bind("<Button-1>", lambda event: self.toggle_valve('FV2', 'open', no_confirm=True))
 
         self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='red')
-        self.V5_indicator.bind("<Button-1>", lambda event: self.toggle_valve('V5', 'open', no_confirm=True))
+        self.V5_indicator.bind("<Button-1>", lambda event: self.handle_valve('V5'))
 
         self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='red')
-        self.V4_indicator.bind("<Button-1>", lambda event: self.toggle_valve('V4', 'open', no_confirm=True))
+        self.V4_indicator.bind("<Button-1>", lambda event: self.handle_valve('V4'))
 
         self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='green')
-        self.V3_indicator.bind("<Button-1>", lambda event: self.toggle_valve('FV3', 'open', no_confirm=True))
+        self.V3_indicator.bind("<Button-1>", lambda event: self.handle_valve('V3'))
 
-        # abs_gauge_label = tk.Label(text='Absolute Pressure Gauge Reading:\n0 Torr')
-        # abs_gauge_label.grid(row=0, column=4, columnspan=2)
-        # self.pressure_plot = tk.Canvas(self.root, width=300, height=300, background='grey')
-        # self.pressure_plot.grid(row=1, column=4, columnspan=2)
-
-        # diff_gauge_label = tk.Label(text='Differential Pressure Gauge Reading:')
-        # diff_gauge_label.grid(row=3, column=4, columnspan=2)
+        self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#1f77b4', fg='white', justify=tk.LEFT)
+        self.diff_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#ff7f0e', fg='white', justify=tk.LEFT)
 
         controls_frame = tk.Frame(self.root, background=gray)
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
         fill_controls_line1 = tk.Frame(fill_controls_frame, background=gray, pady=5)
         desired_pressure_label = tk.Label(fill_controls_line1, text='Desired pressure (Torr):', background=gray)
-        desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
+        self.desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
 
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
-        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.fill_loop)
-        pump_refill_button = ttk.Button(fill_controls_line2, text='Pump down and refill', command=self.pump_refill)
+        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=lambda: start_thread(self.loop_fill))
+        pump_refill_button = ttk.Button(fill_controls_line2, text='Pump down and refill', command=self.handle_pump_refill)
 
-        self.local_permission_1_var = tk.IntVar()
-
+        self.permission_1 = tk.IntVar()
         puff_controls_frame = tk.Frame(controls_frame, background=gray)
-        local_permission_1_check = tk.Checkbutton(puff_controls_frame, variable=self.local_permission_1_var, command=lambda: self.toggle_permission(1), background=gray)
-        self.timing_1_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.permission_1_check = tk.Checkbutton(puff_controls_frame, variable=self.permission_1, command=lambda: self.handle_permission(1), background=gray)
+        self.start_1_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_1_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_1_entry.insert(0, str(DEFAULT_PUFF))
 
-        self.timing_1_entry.bind('<Return>', self.calc_clock_cycles)
-        duration_1_entry = ttk.Entry(puff_controls_frame, width=10)
-        duration_1_entry.bind('<Return>', self.calc_clock_cycles)
-
-        self.local_permission_2_var = tk.IntVar()
-
-        local_permission_2_check = tk.Checkbutton(puff_controls_frame, variable=self.local_permission_2_var, command=lambda: self.toggle_permission(2), background=gray)
-        self.timing_2_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.permission_2 = tk.IntVar()
+        self.permission_2_check = tk.Checkbutton(puff_controls_frame, variable=self.permission_2, command=lambda: self.handle_permission(2), background=gray)
+        self.start_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_2_entry.insert(0, str(DEFAULT_PUFF))
         
         permission_controls_frame = tk.Frame(controls_frame, background=gray)
         W7X_permission_label = tk.Label(permission_controls_frame, text='W7-X permission', background=gray)
         W7X_permission_check = tk.Checkbutton(permission_controls_frame, background=gray, state=tk.DISABLED)
         
         GPI_safe_state_label = tk.Label(permission_controls_frame, text='GPI safe state', background=gray)
-        self.GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, state=tk.DISABLED)
+        self.GPI_safe_status = tk.IntVar()
+        GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, variable=self.GPI_safe_status, state=tk.DISABLED)
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
-        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.puff_loop)
+        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=lambda: start_thread(self.loop_puff))
         
         self.gpi_routine_executing = False
-        self.plots_need_update = True #False
+        self.plots_need_update = True 
         
         self.pressure_times = []
         self.abs_pressures = []
@@ -183,7 +188,6 @@ class GUI:
         self.ax_abs = self.fig.add_subplot(211)
         # Differential pressure plot matplotlib setup
         self.ax_diff = self.fig.add_subplot(212)
-        self.setup_plots()
         # Plot tkinter setup
         self.fig.set_tight_layout(True)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
@@ -192,10 +196,12 @@ class GUI:
         # GUI element placement
         ## Column 1
         background.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.V3_indicator.place(relx=.473, rely=.548, relwidth=.043, relheight=.038)
-        self.V4_indicator.place(relx=.22, rely=.422, relwidth=.045, relheight=.039)
+        self.V3_indicator.place(relx=.472, rely=.548, relwidth=.043, relheight=.038)
+        self.V4_indicator.place(relx=.218, rely=.422, relwidth=.044, relheight=.039)
         self.V5_indicator.place(relx=.339, rely=.346, relwidth=.06, relheight=.026)
         self.FV2_indicator.place(relx=.665, rely=.055, relwidth=.06, relheight=.026)
+        self.abs_gauge_label.place(relx=.853, rely=.537)
+        self.diff_gauge_label.place(relx=.629, rely=.751)
         system_frame.pack(side=tk.LEFT)
         ## Column 2
         self.canvas.get_tk_widget().pack(side=tk.LEFT)
@@ -203,7 +209,7 @@ class GUI:
         ## Column 3
         ### Fill controls frame
         desired_pressure_label.pack(side=tk.LEFT)
-        desired_pressure_entry.pack(side=tk.LEFT)
+        self.desired_pressure_entry.pack(side=tk.LEFT)
         fill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         pump_refill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         fill_controls_line1.pack(side=tk.TOP, fill=tk.X)
@@ -216,11 +222,11 @@ class GUI:
         tk.Label(puff_controls_frame, text='Duration (s)', background=gray).grid(row=0, column=9)
         tk.Label(puff_controls_frame, text='Puff 1', background=gray).grid(row=1, column=6)
         tk.Label(puff_controls_frame, text='Puff 2', background=gray).grid(row=2, column=6)
-        local_permission_1_check.grid(row=1, column=7)
-        self.timing_1_entry.grid(row=1, column=8)
-        duration_1_entry.grid(row=1, column=9)
-        local_permission_2_check.grid(row=2, column=7)
-        self.timing_2_entry.grid(row=2, column=8)
+        self.permission_1_check.grid(row=1, column=7)
+        self.start_1_entry.grid(row=1, column=8)
+        self.duration_1_entry.grid(row=1, column=9)
+        self.permission_2_check.grid(row=2, column=7)
+        self.start_2_entry.grid(row=2, column=8)
         self.duration_2_entry.grid(row=2, column=9)
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
@@ -228,7 +234,7 @@ class GUI:
         W7X_permission_label.pack(side=tk.LEFT)
         W7X_permission_check.pack(side=tk.LEFT)
         GPI_safe_state_label.pack(side=tk.LEFT)
-        self.GPI_safe_state_check.pack(side=tk.LEFT)
+        GPI_safe_state_check.pack(side=tk.LEFT)
         permission_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Action controls frame
@@ -243,140 +249,41 @@ class GUI:
         self.log = tk.Listbox(log_controls_frame, background=gray, highlightbackground=gray)
         self.log.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         log_controls_frame.pack(side=tk.TOP, fill=tk.BOTH, pady=10, expand=True)
-        controls_frame.pack(side=tk.LEFT, fill=tk.BOTH)
+        controls_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
         
-        self.add_to_log('GUI initialized')
+        self._add_to_log('GUI initialized')
         
         try:
             GPI_host = os.getenv('HOST', 'w7xrp2')
             GPI_client = koheron.connect(GPI_host, name='GPI_2')
-            self.add_to_log('Connected to Red Pitaya')
+            self._add_to_log('Connected to Red Pitaya')
             self.GPI_driver = GPI_2(GPI_client)
         except Exception as e:
             print(e)
             self.GPI_driver = FakeRedPitaya()
-            self.add_to_log('Red Pitaya unreachable - simulating...')
+            self._add_to_log('Red Pitaya unreachable - simulating...')
         
-        self.manage_pressures_thread = threading.Thread(target=self.manage_pressures, daemon=True)
-        self.manage_pressures_thread.start()
-        self.manage_plots_thread = threading.Thread(target=self.manage_plots, daemon=True)
-        self.manage_plots_thread.start()
+        self.thread_pressures_thread = threading.Thread(target=self.thread_pressures, daemon=True)
+        self.thread_pressures_thread.start()
+        self.thread_plots_thread = threading.Thread(target=self.thread_plots, daemon=True)
+        self.thread_plots_thread.start()
+        
+        self._add_to_log('Setting default state')
+        self.handle_valve('V3', command='open', no_confirm=True)
+        self.handle_valve('V4', command='close', no_confirm=True)
+        self.handle_valve('V5', command='close', no_confirm=True)
+        self.handle_valve('FV2', command='close', no_confirm=True)
 
     def _quit_tkinter(self):
         self.root.quit()     # stops mainloop
         self.root.destroy()  # this is necessary on Windows to prevent
-                        # Fatal Python Error: PyEval_RestoreThread: NULL tstate
-                        
-    def handle_safe_state(self):
-        checkbox_status = self.GPI_safe_state_check.getint()
-        self.GPI_driver.set_GPI_safe_state(checkbox_status)
-
-    def abs_torr(self):
-        abs_counts = self.GPI_driver.get_abs_gauge()
-        abs_voltage = 0.0661+4.526*uint32_to_volts(abs_counts) # calibration for IN 1 of W7XRP2 with a 0.252 divider 
-        return 5000/10*abs_voltage
-
-    def diff_torr(self):
-        diff_counts = self.GPI_driver.get_diff_gauge()
-        diff_voltage = 0.047+3.329*uint32_to_volts(diff_counts) # calibration for IN 2 of W7XRP2 with a 0.342 divider
-        return 100/10*diff_voltage
-            
-    def manage_pressures(self):
-        last_number_crunch = 0
-        while True:
-            time.sleep(1e-3) # REMOVE FOR REAL RED PITAYA
-            self.pressure_times.append(time.time())
-            
-            # Append pressure readings to fast timeseries
-            self.abs_pressures.append(self.abs_torr())
-            self.diff_pressures.append(self.diff_torr())
-            
-            now = time.time()
-            if now - last_number_crunch > UPDATE_INTERVAL:
-                if not self.gpi_routine_executing:
-                    # Remove fast readings older than PLOT_TIME_RANGE seconds
-                    pressures_start = find_nearest(np.array(self.pressure_times)-now, -PLOT_TIME_RANGE)
-                    self.pressure_times = self.pressure_times[pressures_start:]
-                    self.abs_pressures = self.abs_pressures[pressures_start:]
-                    self.diff_pressures = self.diff_pressures[pressures_start:]
-                    
-                    # Remove average readings older than PLOT_TIME_RANGE seconds
-                    avgs_start = find_nearest(np.array(self.pressure_avg_times)-now, -PLOT_TIME_RANGE)
-                    self.pressure_avg_times = self.pressure_avg_times[avgs_start:]
-                    self.abs_avg_pressures = self.abs_avg_pressures[avgs_start:]
-                    self.diff_avg_pressures = self.diff_avg_pressures[avgs_start:]
-                
-                # Append new average reading
-                interval_start = find_nearest(np.array(self.pressure_times)-now, -UPDATE_INTERVAL)
-                # print('len pressures', len(self.pressure_times), 
-                #       'earliest time', now-self.pressure_times[0], 
-                #       'avg samples', len(self.pressure_times)-interval_start, 
-                #       'avg start time', self.pressure_times[interval_start]-now, sep='\t')
-                avg_time = np.mean(self.pressure_times[interval_start:])
-                abs_avg_pressure = np.mean(self.abs_pressures[interval_start:])
-                diff_avg_pressure = np.mean(self.diff_pressures[interval_start:])
-                self.pressure_avg_times.append(avg_time)
-                self.abs_avg_pressures.append(abs_avg_pressure)
-                self.diff_avg_pressures.append(diff_avg_pressure)
-                
-                self.plots_need_update = True
-                last_number_crunch = now
-                # print('{: >10} {: >10} {: >10}'
-                #       .format(len(self.pressure_avg_times), 
-                #               round(now-self.pressure_avg_times[0], 2),
-                #               round(now-self.pressure_avg_times[-1],2)))
-                
-    def setup_plots(self):
-        # Do not attempt to draw plots if no data has been collected
-        relative_times = self.rel_avg_times
-        if not relative_times:
-            return
+                             # Fatal Python Error: PyEval_RestoreThread: NULL tstate
         
-        # Absolute gauge plot setup
-        self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2)
-        self.ax_abs.set_ylabel('Torr', weight='bold')
-        plt.setp(self.ax_abs.get_xticklabels(), visible=False)
-        self.ax_abs.grid(True, color='#c9dae5')
-        self.ax_abs.patch.set_facecolor('#e3eff7')
-        
-        # Differential gauge plot setup
-        self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2)
-        self.ax_diff.set_ylabel('Torr', weight='bold')
-        self.ax_diff.set_xlabel('Seconds', weight='bold')
-        self.ax_diff.grid(True, color='#e5d5c7')
-        self.ax_diff.patch.set_facecolor('#f7ebe1')
-        
-        # Update labels
-        #if self.pressure_avg_times:
-        #     abs_gauge_label['text'] = 'Absolute Pressure Gauge Reading:\n%f Torr' % self.abs_avg_pressures[-1]
-        #     diff_gauge_label['text'] = 'Diff Pressure Gauge Reading:\n%f Torr' % self.diff_avg_pressures[-1]
-                
-    def manage_plots(self):
-        '''
-        TODO: optimization if the lines don't need to be completely redrawn (will probably have to set xlim and ylim too)
-        '''
-        while True:
-            if self.plots_need_update:
-                relative_times = self.rel_avg_times
-                self.ax_diff.cla()
-                self.ax_abs.cla()
-                self.setup_plots()
-                self.fig.canvas.draw_idle()
-                self.plots_need_update = False
-    
-    @property
-    def rel_avg_times(self):
-        now = time.time()
-        return [t - now for t in self.pressure_avg_times]
-            
-    @property 
-    def pt1(self):
-        return self.timing_1_entry.get()
-        
-    @property 
-    def pt2(self):
-        return self.timing_2_entry.get()
-
+    def _add_to_log(self, text):
+        time_string = datetime.datetime.now().strftime('%H:%M:%S')
+        self.log.insert(tk.END, ' ' + time_string + ' ' + text)
+        self.log.yview(tk.END)
+                             
     def _confirm_window(self, question, action_if_confirmed):
         win = tk.Toplevel()
         win_width = 250
@@ -400,157 +307,347 @@ class GUI:
         confirm.grid(row=1, column=0)
         cancel = tk.Button(win, text='Cancel', width=10, command=win.destroy)
         cancel.grid(row=1, column=1)
-
-    def toggle_valve(self, valve_name, command, no_confirm=False):
-        signal =      1         if command == 'open' else 0
-        action_text = 'OPENING' if command == 'open' else 'CLOSING'
-        fill =        'green'   if command == 'open' else 'red'
-        self.add_to_log(action_text + ' ' + valve_name)
         
-        if valve_name == 'FV2':
-            speed = 'fast'
-            valve_number = 1
-        else:
-            speed = 'slow'
-            valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
-            
-        if valve_name == 'V3': # this valve's signals are reversed relative to normal
-            signal = int(not signal)
+    def _change_puff_gui_state(self, state):
+        elements = [self.permission_1_check, self.start_1_entry, 
+                    self.duration_1_entry, self.permission_2_check,
+                    self.start_2_entry, self.duration_2_entry]
+        for element in elements:
+            try: 
+                element.config(state=state)
+            except: 
+                pass
         
-        def action():
-            # Send signal
-            set_trigger = getattr(self.GPI_driver, 'set_%s_%s_trigger' % (speed, valve_number))
-            set_trigger(signal)
-            
-            # Change indicator color    
-            getattr(self, '%s_indicator' % valve_name).config(bg=fill)
-                
-        if no_confirm:
-            action()
-        else:
-            self._confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
-            
-    def toggle_permission(self, puff_number):
-        permission = getattr(self, 'local_permission_%d_var' % puff_number).get()
-        getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(int(permission))
+    @property
+    def rel_avg_times(self):
+        now = time.time()
+        return [t - now for t in self.pressure_avg_times]
         
-    def add_to_log(self, text):
-        time_string = datetime.datetime.now().strftime('%H:%M:%S')
-        self.log.insert(tk.END, ' ' + time_string + ' ' + text)
-        self.log.yview(tk.END)
-
-    def print_check(self, check_number):
-        if globals()['local_permission_%s_var' % check_number].get():
-            getattr(self.GPI_driver, 'set_fast_1_permission_%s' % check_number)(1)
-        else:
-            getattr(self.GPI_driver, 'set_fast_1_permission_%s' % check_number)(0)
-            
-    def calc_clock_cycles(self, event):
-        cycles_in_entry = int(int(self.timing_1_entry.get())/8e-9)
-        cycles_in_duration = int(int(self.duration_1_entry.get())/8e-9)
-        print(cycles_in_entry)
-        print(cycles_in_duration)
+    def start(self, puff_number):
+        try:
+            text = getattr(self, 'start_%d_entry' % puff_number).get()
+            return float(text)
+        except:
+            return None
         
-    def pump_refill(self):
-        self.pumping_down = True
+    def duration(self, puff_number):
+        try:
+            text = getattr(self, 'duration_%d_entry' % puff_number).get()
+            return float(text)
+        except:
+            return None
         
-    def pump_down_loop(self):
-        if self.pumping_down:
-            sleep_seconds = 0.2
-            if abs_pressure > 0 and desired_pressure > 0:                    
-                if not self.GPI_driver.get_slow_2_trigger():
-                    self.toggle_valve('V4', 'open', no_confirm=True)
-                if (abs_voltage < 0.02 and last_voltage < 0.02):
-                    self.toggle_valve('V4', 'close', no_confirm=True)
-                    pumping_down = False
-                    filling = True
-                    sleep_seconds = 1
-        self.root.after(sleep_seconds, self.pump_down_loop)
-        
-    def fill_loop(self):
-        desired_pressure = float(desired_pressure_entry.get())
-        desired_volts = 10/5000*desired_pressure
-        
-        self.desired_pressure = desired_pressure
-        self.filling = True
-        if filling:
-            sleep_seconds = 0.2
-            if abs_pressure > 0 and desired_pressure > 0:
-                if abs_pressure < desired_pressure:
-                    if not self.GPI_driver.get_slow_1_trigger():
-                        self.toggle_valve('V5', 'open', no_confirm=True)
-                elif abs_pressure > 0.97*desired_pressure:
-                    self.toggle_valve('V5', 'close', no_confirm=True)
-                    filling = False
+    def handle_valve(self, valve_name, command=None, no_confirm=True):
+        '''
+        TODO: loop until desired state is achieved
+        self.GPI_driver.get_slow_1_trigger(): # 1 means V5 is open
+        2 is for v4
+        3 is for v3?
+        '''
+        with threading.Lock():
+            if valve_name == 'FV2':
+                speed = 'fast'
+                valve_number = 1
             else:
-                filling = False
-        else:
-            sleep_seconds = 1
-        self.root.after(sleep_seconds, self.fill_loop)
-        
-    def puff_loop(self):
-        pt1 = self.timing_1_entry.get()
-        pt1p = self.local_permission_1_var.get()
-        pt2 = self.timing_2_entry.get()
-        pt2p = self.local_permission_2_var.get()
-        if (pt1 and pt1p) or (pt2 and pt2p):
-            self.timing_1_entry.config(state='disabled')
-            self.timing_2_entry.config(state='disabled')
+                speed = 'slow'
+                valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
+                
+            # If command arg is not supplied, set to toggle state of valve
+            if not command:
+                status = getattr(self.GPI_driver, 'get_%s_%s_trigger' % (speed, valve_number))
+                #open_code = 1 if valve_name != 'V3' else 0
+                s = status()
+                if valve_name == 'V3':
+                    if s == 0:
+                        command = 'close'
+                    else:
+                        command = 'open'
+                else:
+                    if s == 0:
+                        command = 'open'
+                    else:
+                        command = 'close'
+                #command = 'close' if s == open_code else 'open'
+                # print(s, 'so', command)
+                print(s, ' -> ', command, end=' -> ')
+                
+            signal =      1         if command == 'open' else 0
+            action_text = 'OPENING' if command == 'open' else 'CLOSING'
+            fill =        'green'   if command == 'open' else 'red'
+            self._add_to_log(action_text + ' ' + valve_name)
             
-            # Convert the puff times into floats 
+                
+            if valve_name == 'V3': # this valve's signals are reversed relative to normal
+                signal = int(not signal)
+            
+            def action():
+                # Send signal
+                set_trigger = getattr(self.GPI_driver, 'set_%s_%s_trigger' % (speed, valve_number))
+                set_trigger(signal)
+                if speed == 'slow':
+                    print(getattr(self.GPI_driver, 'get_%s_%s_trigger' % (speed, valve_number))())
+                
+                # Change indicator color    
+                getattr(self, '%s_indicator' % valve_name).config(bg=fill)
+                    
+            if no_confirm:
+                action()
+            else:
+                self._confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
+                        
+    def handle_safe_state(self):
+        checkbox_status = self.GPI_safe_status.get()
+        self.GPI_driver.set_GPI_safe_state(checkbox_status)
+        
+    def handle_permission(self, puff_number):
+        '''
+        May be possible to remove this method. Does Red Pitaya even check permission?
+        '''
+        permission = getattr(self, 'permission_%d' % puff_number).get()
+        # getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(int(permission))
+        
+    def handle_pump_refill(self):
+        pump = threading.Thread(target=self.loop_pump_down, daemon=True)
+        pump.start()
+        pump.join()
+        fill = threading.Thread(target=self.loop_fill, daemon=True)
+        fill.start()
+        
+    def abs_torr(self):
+        abs_counts = self.GPI_driver.get_abs_gauge()
+        abs_voltage = 0.0661+4.526*uint32_to_volts(abs_counts) # calibration for IN 1 of W7XRP2 with a 0.252 divider 
+        return 5000/10*abs_voltage
+
+    def diff_torr(self):
+        diff_counts = self.GPI_driver.get_diff_gauge()
+        diff_voltage = 0.047+3.329*uint32_to_volts(diff_counts) # calibration for IN 2 of W7XRP2 with a 0.342 divider
+        return 100/10*diff_voltage
+                
+    def draw_plots(self):
+        # Do not attempt to draw plots if no data has been collected
+        relative_times = self.rel_avg_times
+        if not relative_times:
+            return
+        
+        # Absolute gauge plot setup
+        self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2)
+        self.ax_abs.set_ylabel('Torr', weight='bold')
+        plt.setp(self.ax_abs.get_xticklabels(), visible=False)
+        self.ax_abs.grid(True, color='#c9dae5')
+        self.ax_abs.patch.set_facecolor('#e3eff7')
+        
+        # Differential gauge plot setup
+        # print(relative_times, self.diff_avg_pressures)
+        self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2)
+        self.ax_diff.set_ylabel('Torr', weight='bold')
+        self.ax_diff.set_xlabel('Seconds', weight='bold')
+        self.ax_diff.grid(True, color='#e5d5c7')
+        self.ax_diff.patch.set_facecolor('#f7ebe1')
+        
+        # Update labels
+        self.abs_gauge_label['text'] = '%.1f\nTorr' % round(self.abs_avg_pressures[-1], 1)
+        self.diff_gauge_label['text'] = '%.1f\nTorr' % round(self.diff_avg_pressures[-1], 1)
+                
+    def thread_plots(self):
+        '''
+        TODO: optimization if the lines don't need to be completely redrawn (will probably have to set xlim and ylim too)
+        '''
+        while True:
+            if self.plots_need_update:
+                self.ax_diff.cla()
+                self.ax_abs.cla()
+                self.draw_plots()
+                self.fig.canvas.draw_idle()
+                self.plots_need_update = False
+        
+    def thread_pressures(self):
+        last_number_crunch = 0
+        while True:
+            # time.sleep(1e-3) # REMOVE FOR REAL RED PITAYA
+            self.pressure_times.append(time.time())
+            
+            # Append pressure readings to fast timeseries
+            self.abs_pressures.append(self.abs_torr())
+            self.diff_pressures.append(self.diff_torr())
+            
+            now = time.time()
+            if now - last_number_crunch > UPDATE_INTERVAL:
+                if not self.gpi_routine_executing:
+                    # Remove fast readings older than PLOT_TIME_RANGE seconds
+                    pressures_start = find_nearest(np.array(self.pressure_times)-now, -PLOT_TIME_RANGE)
+                    self.pressure_times = self.pressure_times[pressures_start:]
+                    self.abs_pressures = self.abs_pressures[pressures_start:]
+                    self.diff_pressures = self.diff_pressures[pressures_start:]
+                    
+                    # Remove average readings older than PLOT_TIME_RANGE seconds
+                    avgs_start = find_nearest(np.array(self.pressure_avg_times)-now, -PLOT_TIME_RANGE)
+                    self.pressure_avg_times = self.pressure_avg_times[avgs_start:]
+                    self.abs_avg_pressures = self.abs_avg_pressures[avgs_start:]
+                    self.diff_avg_pressures = self.diff_avg_pressures[avgs_start:]
+                
+                # Append new average reading
+                interval_start = find_nearest(np.array(self.pressure_times)-now, -UPDATE_INTERVAL)
+                avg_time = np.mean(self.pressure_times[interval_start:])
+                abs_avg_pressure = np.mean(self.abs_pressures[interval_start:])
+                diff_avg_pressure = np.mean(self.diff_pressures[interval_start:])
+                self.pressure_avg_times.append(avg_time)
+                self.abs_avg_pressures.append(abs_avg_pressure)
+                self.diff_avg_pressures.append(diff_avg_pressure)
+                
+                self.plots_need_update = True
+                last_number_crunch = now
+
+    def loop_pump_down(self):        
+        if self.abs_pressures[-1] > PUMPED_OUT:
+            self.handle_valve('V4', command='open')
+        
+        self._add_to_log('Starting to pump out')    
+        while self.abs_pressures[-1] > PUMPED_OUT:
+            time.sleep(LOOP_SLEEP)
+        
+        self.handle_valve('V4', command='close')
+        self._add_to_log('Completed pump out')    
+        
+    def loop_fill(self):
+        desired_pressure = float(self.desired_pressure_entry.get())
+        
+        if self.abs_pressures[-1] > desired_pressure:
+            self._add_to_log('No need to fill - already at desired pressure')
+            return 
+            
+        self._add_to_log('Starting fill to %.2f Torr' % desired_pressure)
+        while self.abs_pressures[-1] < desired_pressure-FILL_MARGIN:
+            self.handle_valve('V5', command='open')
+            time.sleep(LOOP_SLEEP)
+        self.handle_valve('V5', command='close')
+        self._add_to_log('Completed fill to %.2f Torr' % desired_pressure)
+        
+    def puff(self, puff_number):
+        permission = getattr(self, 'permission_%d' % puff_number).get()
+        puff_start = self.start(puff_number)
+        puff_duration = self.duration(puff_number)
+        if permission and puff_start and puff_duration:
+            time.sleep(PRETRIGGER+puff_start)
+            with threading.Lock():
+                self.handle_valve('FV2', 'open')
+                time.sleep(puff_duration)
+                self.handle_valve('FV2', 'close')
+            self._add_to_log('Puff complete')
+        
+    def loop_puff(self):
+        print(self.permission_1.get(), self.start(1), self.duration(1))
+        puff_1_happening = self.permission_1.get() and self.start(1) and self.duration(1)
+        puff_2_happening = self.permission_2.get() and self.start(2) and self.duration(2)
+        if not (puff_1_happening or puff_2_happening):
+            self._add_to_log('No puffs happening; abort')
+            return
+            
+        # Start a thread for each puff now for more accurate timing
+        puff1 = threading.Thread(target=lambda: self.puff(1), daemon=True)
+        puff2 = threading.Thread(target=lambda: self.puff(2), daemon=True)
+        puff1.start()
+        puff2.start()
+        
+        T0 = time.time()
+        self._add_to_log('---T0---')
+        self._change_puff_gui_state(tk.DISABLED)
+        self.handle_valve('V3', command='close')
+                
+        # Wait until both puffs have been executed
+        puff1.join()
+        puff2.join()
+            
+        # Save pressure data
+        time.sleep(2)
+        try:
+            relative_times = self.rel_avg_times
+            # matplotlib.use('Agg')
+            pressures = [p for t,p in zip(relative_times, self.diff_pressures) if t > -1]
+            relative_times = [t for t in relative_times if t > -1] 
+            np.save(SAVE_FOLDER + 'diff_pressure_%d.npy' % int(T0), [relative_times, pressures])
+            plt.plot(relative_times, pressures)
+            plt.xlabel('t-T1 (s)')
+            plt.ylabel('Diff. pressure (Torr)')
+            plt.savefig(SAVE_FOLDER + 'diff_pressure_%d.png' % int(T0))
+            self._add_to_log('Pressure data saved with ID %d' % T0)
+        except Exception as e:
+            self._add_to_log('Save pressure data failed')
+            print('Save pressure data failed:', e)
+            
+        self.handle_valve('V3', command='open')
+        self._change_puff_gui_state(tk.NORMAL)
+            
+            
+    def loop_puff_GPI3(self):
+        '''
+        This method uses the precise timing features on the latest Red Pitaya
+        code. Not ready for prime time due to bugs.
+        '''
+        # Get user-entered puff 1 options
+        permission_1 = self.permission_1.get()
+        start_1 = self.start(1)
+        duration_1 = self.duration(1)
+        puff_1_happening = start_1 and permission_1 and duration_1
+        
+        # Get user-entered puff 2 options
+        permission_2 = self.permission_2.get()
+        start_2 = self.start(2)
+        duration_2 = self.duration(2)
+        puff_2_happening = start_2 and permission_2 and duration_2
+        
+        if puff_1_happening or puff_2_happening:
+            self._change_puff_gui_state(tk.DISABLED)
+            
             never = 1e10
-            pt1 = float(pt1) if pt1 else never
-            pt2 = float(pt2) if pt2 else never
             
             # Loop until all actions are completed while monitoring diff pressure
             donePrep = doneT1 = donePuff1 = doneClose1 = donePuff2 = doneClose2 = doneSave = False
             closeTime = never
             FVduration = 0.1
             T0 = time.time()
-            T1relative = 10
-            T1 = T0+T1relative
+            T1 = T0+PRETRIGGER
             diffPressure = []
             diffPressureTimes = []
-            print('T0 received, T1 in',T1relative)
-            while not (donePrep and doneT1 and donePuff1 and doneClose1 
-                       and donePuff2 and doneClose2 and doneSave):
+            self._add_to_log('T0 received, T1 in %.2f seconds' % PRETRIGGER)
+            while not (donePrep and doneT1 and donePuff1 and doneClose1 and
+                       donePuff2 and doneClose2 and doneSave):
                 t = time.time()
-                if not donePrep and t > T1-5+min(pt1, pt2):    
-                    print('T0 +', t-T0, 'closing V3')
-                    self.toggle_valve('V3', 'close', no_confirm=True)
+                if not donePrep and t > T1-5+min(start_1, start_2):    
+                    self._add_to_log('(T0 + %.2f) closing V3' % t-T0)
+                    self.handle_valve('V3', command='close')
                     # Set fast timings in milliseconds
-                    if pt1p and pt1p < never:
-                        self.GPI_driver.set_fast_1_trigger(pt1*1000) 
+                    if permission_1 and permission_1 < never:
+                        self.GPI_driver.set_fast_1_trigger(start_1*1000) 
                         self.GPI_driver.set_fast_1_duration(FVduration*1000)
-                    if pt2p and pt2 < never:
-                        self.GPI_driver.set_fast_2_trigger(pt2*1000)
+                    if permission_2 and start_2 < never:
+                        self.GPI_driver.set_fast_2_trigger(start_2*1000)
                         self.GPI_driver.set_fast_2_duration(FVduration*1000)
-                    self.GPI_driver.reset_time(max(pt1+FVduration, pt2+FVduration)*1000)
+                    self.GPI_driver.reset_time(max(start_1+FVduration, start_2+FVduration)*1000)
                     donePrep = True
                 
                 if not doneT1 and t > T1:
-                    print('T0 +', t-T0, 'T1 should have been received')
+                    self._add_to_log('(T0 + %.2f) T1 should have been received' % t-T0)
                     doneT1 = True
                 
-                if pt1p and pt1 < never:
+                if permission_1 and start_1 < never:
                     t = time.time()
-                    if not donePuff1 and t > T1+pt1:
-                        print('T1 +', t-T1, 'FV should have opened')
+                    if not donePuff1 and t > T1+start_1:
+                        self._add_to_log('(T1 + %.2f) FV should have opened' % t-T1)
                         donePuff1 = True
-                    if not doneClose1 and t > T1+pt1+FVduration:
-                        print('T1 +', t-T1, 'FV should have closed')
+                    if not doneClose1 and t > T1+start_1+FVduration:
+                        self._add_to_log('(T1 + %.2f) FV should have closed' % t-T1)
                         doneClose1 = True
                         closeTime = t
                 else:
                     donePuff1 = True
                     doneClose1 = True
-                if pt2p and pt2 < never:
+                if permission_2 and start_2 < never:
                     t = time.time()
-                    if not donePuff2 and t > T1+pt2:
-                        print('T1 +', t-T1, 'FV should have opened')
+                    if not donePuff2 and t > T1+start_2:
+                        self._add_to_log('(T1 + %.2f) FV should have opened' % t-T1)
                         donePuff2 = True
-                    if not doneClose2 and t > T1+pt2+FVduration:
-                        print('T1 +', t-T1, 'FV should have closed')
+                    if not doneClose2 and t > T1+start_2+FVduration:
+                        self._add_to_log('(T1 + %.2f) FV should have closed' % t-T1)
                         doneClose2 = True
                         closeTime = t
                 else:
@@ -567,12 +664,12 @@ class GUI:
                     doneSave = True
                 diffPressureTimes.append(time.time()-T1)
                 diffPressure.append(self.GPI_driver.get_diff_gauge())
-            self.toggle_valve('V3', 'open', no_confirm=True)
-            self.timing_1_entry.config(state='normal')
-            self.timing_2_entry.config(state='normal')
+                
+            self.handle_valve('V3', command='open')
+            self._change_puff_gui_state(tk.NORMAL)
 
  
 if __name__ == '__main__':
-    tkRoot = tk.Tk()
-    main_ui = GUI(tkRoot)
-    tkRoot.mainloop()
+    tk_root = tk.Tk()
+    main_ui = GUI(tk_root)
+    tk_root.mainloop()
