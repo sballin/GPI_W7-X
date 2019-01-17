@@ -1,16 +1,10 @@
 '''
 GUI for valve control in GPI system at W7-X. Original code by Kevin Tang.
 
-Architecture
-------------
-- thread_pressures records fast and averaged pressure readings
-- thread_plots updates plots when required
-
 TODO: fix 0 entry in start time
 TODO: require 5 entries less than 0 torr to stop pumping down
 TODO: save values only starting 1 second before T1
-TODO: fix red pitaya reading bad values (simulate)
-TODO: fix plots (see how old code does it)
+TODO: fix plots (subplot responsible?)
 TODO: fix threads messing with RP command reliability
 TODO: fix join blocking everything else
 '''
@@ -31,7 +25,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
-UPDATE_INTERVAL = 2  # seconds between plot updates
+UPDATE_INTERVAL = 1  # seconds between plot updates
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 LOOP_SLEEP = 0.2 # seconds between pump/fill loop iterations
@@ -265,17 +259,24 @@ class GUI:
         
         self.thread_pressures_thread = threading.Thread(target=self.thread_pressures, daemon=True)
         self.thread_pressures_thread.start()
-        self.thread_plots_thread = threading.Thread(target=self.thread_plots, daemon=True)
-        self.thread_plots_thread.start()
         
         self._add_to_log('Setting default state')
         self.handle_valve('V3', command='open', no_confirm=True)
         self.handle_valve('V4', command='close', no_confirm=True)
         self.handle_valve('V5', command='close', no_confirm=True)
         self.handle_valve('FV2', command='close', no_confirm=True)
-
+        
+        self.mainloop = True   
+        while self.mainloop:
+            if self.plots_need_update:
+                self.draw_plots()
+                
+            root.update_idletasks()
+            root.update()
+                             
     def _quit_tkinter(self):
-        self.root.quit()     # stops mainloop
+        self.mainloop = False # ends our custom while loop
+        self.root.quit()     # stops mainloop 
         self.root.destroy()  # this is necessary on Windows to prevent
                              # Fatal Python Error: PyEval_RestoreThread: NULL tstate
         
@@ -338,62 +339,55 @@ class GUI:
             return None
         
     def handle_valve(self, valve_name, command=None, no_confirm=True):
-        '''
-        TODO: loop until desired state is achieved
-        self.GPI_driver.get_slow_1_trigger(): # 1 means V5 is open
-        2 is for v4
-        3 is for v3?
-        '''
-        with threading.Lock():
-            if valve_name == 'FV2':
-                speed = 'fast'
-                valve_number = 1
-            else:
-                speed = 'slow'
-                valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
-                
-            # If command arg is not supplied, set to toggle state of valve
-            if not command:
-                status = getattr(self.GPI_driver, 'get_%s_%s_trigger' % (speed, valve_number))
-                #open_code = 1 if valve_name != 'V3' else 0
-                s = status()
-                if valve_name == 'V3':
-                    if s == 0:
-                        command = 'close'
-                    else:
-                        command = 'open'
+        if valve_name == 'FV2':
+            speed = 'fast'
+            valve_number = 1
+        else:
+            speed = 'slow'
+            valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
+            
+        # If command arg is not supplied, set to toggle state of valve
+        if not command:
+            status = getattr(self.GPI_driver, 'get_%s_%s_trigger' % (speed, valve_number))
+            #open_code = 1 if valve_name != 'V3' else 0
+            s = status()
+            if valve_name == 'V3':
+                if s == 0:
+                    command = 'close'
                 else:
-                    if s == 0:
-                        command = 'open'
-                    else:
-                        command = 'close'
-                #command = 'close' if s == open_code else 'open'
-                # print(s, 'so', command)
-                print(s, ' -> ', command, end=' -> ')
-                
-            signal =      1         if command == 'open' else 0
-            action_text = 'OPENING' if command == 'open' else 'CLOSING'
-            fill =        'green'   if command == 'open' else 'red'
-            self._add_to_log(action_text + ' ' + valve_name)
-            
-                
-            if valve_name == 'V3': # this valve's signals are reversed relative to normal
-                signal = int(not signal)
-            
-            def action():
-                # Send signal
-                set_trigger = getattr(self.GPI_driver, 'set_%s_%s_trigger' % (speed, valve_number))
-                set_trigger(signal)
-                if speed == 'slow':
-                    print(getattr(self.GPI_driver, 'get_%s_%s_trigger' % (speed, valve_number))())
-                
-                # Change indicator color    
-                getattr(self, '%s_indicator' % valve_name).config(bg=fill)
-                    
-            if no_confirm:
-                action()
+                    command = 'open'
             else:
-                self._confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
+                if s == 0:
+                    command = 'open'
+                else:
+                    command = 'close'
+            #command = 'close' if s == open_code else 'open'
+            # print(s, 'so', command)
+            print(s, ' -> ', command, end=' -> ')
+            
+        signal =      1         if command == 'open' else 0
+        action_text = 'OPENING' if command == 'open' else 'CLOSING'
+        fill =        'green'   if command == 'open' else 'red'
+        self._add_to_log(action_text + ' ' + valve_name)
+        
+            
+        if valve_name == 'V3': # this valve's signals are reversed relative to normal
+            signal = int(not signal)
+        
+        def action():
+            # Send signal
+            set_trigger = getattr(self.GPI_driver, 'set_%s_%s_trigger' % (speed, valve_number))
+            set_trigger(signal)
+            if speed == 'slow':
+                print(getattr(self.GPI_driver, 'get_%s_%s_trigger' % (speed, valve_number))())
+            
+            # Change indicator color    
+            getattr(self, '%s_indicator' % valve_name).config(bg=fill)
+                
+        if no_confirm:
+            action()
+        else:
+            self._confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
                         
     def handle_safe_state(self):
         checkbox_status = self.GPI_safe_status.get()
@@ -428,6 +422,8 @@ class GUI:
         relative_times = self.rel_avg_times
         if not relative_times:
             return
+        self.ax_diff.cla()
+        self.ax_abs.cla()
         
         # Absolute gauge plot setup
         self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2)
@@ -437,7 +433,6 @@ class GUI:
         self.ax_abs.patch.set_facecolor('#e3eff7')
         
         # Differential gauge plot setup
-        # print(relative_times, self.diff_avg_pressures)
         self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2)
         self.ax_diff.set_ylabel('Torr', weight='bold')
         self.ax_diff.set_xlabel('Seconds', weight='bold')
@@ -447,18 +442,9 @@ class GUI:
         # Update labels
         self.abs_gauge_label['text'] = '%.1f\nTorr' % round(self.abs_avg_pressures[-1], 1)
         self.diff_gauge_label['text'] = '%.1f\nTorr' % round(self.diff_avg_pressures[-1], 1)
-                
-    def thread_plots(self):
-        '''
-        TODO: optimization if the lines don't need to be completely redrawn (will probably have to set xlim and ylim too)
-        '''
-        while True:
-            if self.plots_need_update:
-                self.ax_diff.cla()
-                self.ax_abs.cla()
-                self.draw_plots()
-                self.fig.canvas.draw_idle()
-                self.plots_need_update = False
+        
+        self.fig.canvas.draw_idle()
+        self.plots_need_update = False
         
     def thread_pressures(self):
         last_number_crunch = 0
@@ -528,10 +514,9 @@ class GUI:
         puff_duration = self.duration(puff_number)
         if permission and puff_start and puff_duration:
             time.sleep(PRETRIGGER+puff_start)
-            with threading.Lock():
-                self.handle_valve('FV2', 'open')
-                time.sleep(puff_duration)
-                self.handle_valve('FV2', 'close')
+            self.handle_valve('FV2', 'open')
+            time.sleep(puff_duration)
+            self.handle_valve('FV2', 'close')
             self._add_to_log('Puff complete')
         
     def loop_puff(self):
@@ -672,4 +657,3 @@ class GUI:
 if __name__ == '__main__':
     tk_root = tk.Tk()
     main_ui = GUI(tk_root)
-    tk_root.mainloop()
