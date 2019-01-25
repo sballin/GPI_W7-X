@@ -1,12 +1,10 @@
 '''
 GUI for valve control in GPI system at W7-X. Original code by Kevin Tang.
 
-TODO: fix 0 entry in start time
+TODO: fix 0 entry in start time - do not accept 0 puff duration though
 TODO: require 5 entries less than 0 torr to stop pumping down
 TODO: save values only starting 1 second before T1
 TODO: fix plots (subplot responsible?)
-TODO: fix threads messing with RP command reliability
-TODO: fix join blocking everything else
 '''
 
 from __future__ import print_function # for print to work inside lambda
@@ -40,10 +38,13 @@ def uint32_to_volts(reading):
     Not really volts, but proportional. 
     Calibration is inside diff_torr and abs_torr functions.
     '''
-    return (2/(2**14-1)*signed_conversion(reading))
+    return 2/(2**14-1)*signed_conversion(reading)
     
         
 def signed_conversion(reading):
+    '''
+    Convert Red Pitaya binary output to a uint32.
+    '''
     binNumber = "{0:014b}".format(int(round(reading)))
     binConv = ""
     if int(binNumber[0], 2) == 1:
@@ -62,7 +63,7 @@ def signed_conversion(reading):
     
 def find_nearest(array, value):
     '''
-    Find index of first value in ORDERED array closest to given value.
+    Find index of first value in an ORDERED array closest to given value.
     Parameters
         array: NumPy array
         value: int or float
@@ -101,31 +102,37 @@ class Worker:
         try:
             GPI_host = os.getenv('HOST', 'w7xrp2')
             GPI_client = koheron.connect(GPI_host, name='GPI_2')
-            # self.data_queue.put('Connected to Red Pitaya')
+            self.data_queue.put('Connected to Red Pitaya')
             self.GPI_driver = GPI_2(GPI_client)
         except Exception as e:
             print(e)
             self.GPI_driver = FakeRedPitaya()
             # self.data_queue.put('Red Pitaya unreachable - simulating...')
         
-        pressure_times = []
-        abs_pressures = []
-        diff_pressures = []
+        self.pressure_times = []
+        self.abs_pressures = []
+        self.diff_pressures = []
         
-        last_send = 0
+        self.last_send = 0
+        self.mainloop()
+        
+    def mainloop(self):
         while True:
             now = time.time()
             if not self.commands_queue.empty():
                 self.commands.append(self.commands_queue.get_nowait())
                 print('Commands (worker perspective):', self.commands)
             
+            # Run any commands scheduled to execute (technically) before now 
             if self.commands:
                 commands_to_remove = []
                 for i, c in enumerate(self.commands):
                     if now > c[0]:
-                        if len(c) == 3:
+                        if len(c) == 3: 
+                            # Run command with an argument
                             result = getattr(self.GPI_driver, c[1])(c[2])
-                        else:
+                        else: 
+                            # Run command with no argument
                             result = getattr(self.GPI_driver, c[1])()
                         if type(result) is int:
                             self.data_queue.put((c[1], result))
@@ -134,16 +141,15 @@ class Worker:
                     del self.commands[i]
             
             now = time.time()
-            pressure_times.append(now)
-            abs_pressures.append(self.abs_torr())
-            diff_pressures.append(self.diff_torr())
-            if now - last_send > UPDATE_INTERVAL:
-                print(len(pressure_times))
-                self.data_queue.put(('pressures', pressure_times, abs_pressures, diff_pressures))
-                pressure_times = []
-                abs_pressures = []
-                diff_pressures = []
-                last_send = now
+            self.pressure_times.append(now)
+            self.abs_pressures.append(self.abs_torr())
+            self.diff_pressures.append(self.diff_torr())
+            if now - self.last_send > UPDATE_INTERVAL:
+                self.data_queue.put(('pressures', self.pressure_times, self.abs_pressures, self.diff_pressures))
+                self.pressure_times = []
+                self.abs_pressures = []
+                self.diff_pressures = []
+                self.last_send = now
             
     def abs_torr(self):
         abs_counts = self.GPI_driver.get_abs_gauge()
@@ -297,8 +303,6 @@ class GUI:
         action_controls_frame = tk.Frame(controls_frame, background=gray)
         GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=lambda: start_thread(self.loop_puff))
         
-        plots_need_update = True 
-        
         self.pressure_times = []
         self.abs_pressures = []
         self.diff_pressures = []
@@ -390,39 +394,24 @@ class GUI:
         self.handle_valve('V4', command='close', no_confirm=True)
         self.handle_valve('V5', command='close', no_confirm=True)
         self.handle_valve('FV2', command='close', no_confirm=True)
+        self._add_to_log('Finished setting default state')
         
-        last_number_crunch = 0
-        self.mainloop = True   
-        while self.mainloop:
-            if plots_need_update:
-                self.draw_plots()
-                plots_need_update = False
-                
+        self.plots_need_update = False
+        self.mainloop_running = True   
+        self.mainloop()
+        
+    def mainloop(self):
+        while self.mainloop_running:
             self.get_data()
                 
-            now = time.time()
-            if now - last_number_crunch > UPDATE_INTERVAL:
-                # Remove fast readings older than PLOT_TIME_RANGE seconds
-                pressures_start = find_nearest(np.array(self.pressure_times)-now, -PLOT_TIME_RANGE)
-                self.pressure_times = self.pressure_times[pressures_start:]
-                self.abs_pressures = self.abs_pressures[pressures_start:]
-                self.diff_pressures = self.diff_pressures[pressures_start:]
+            if self.plots_need_update:
+                self.draw_plots()
                 
-                # Remove average readings older than PLOT_TIME_RANGE seconds
-                avgs_start = find_nearest(np.array(self.pressure_avg_times)-now, -PLOT_TIME_RANGE)
-                self.pressure_avg_times = self.pressure_avg_times[avgs_start:]
-                self.abs_avg_pressures = self.abs_avg_pressures[avgs_start:]
-                self.diff_avg_pressures = self.diff_avg_pressures[avgs_start:]
-
-                plots_need_update = True
-                last_number_crunch = now
-            
-            time.sleep(UPDATE_INTERVAL)
-            root.update_idletasks()
-            root.update()
+            self.root.update_idletasks()
+            self.root.update()
                              
     def _quit_tkinter(self):
-        self.mainloop = False # ends our custom while loop
+        self.mainloop_running = False # ends our custom while loop
         self.root.quit()      # stops mainloop 
         self.root.destroy()   # this is necessary on Windows to prevent
                               # Fatal Python Error: PyEval_RestoreThread: NULL tstate
@@ -486,7 +475,6 @@ class GUI:
             return None
             
     def ask_worker(self, command):
-        print(self.data)
         self.commands_queue.put((0, command))
         while command not in self.data.keys():
             self.get_data()
@@ -495,13 +483,33 @@ class GUI:
     def get_data(self):
         while not self.data_queue.empty():
             datum = self.data_queue.get_nowait()
+            now = time.time()
             if datum[0] == 'pressures':
+                # Add fast readings
                 self.pressure_times.extend(datum[1])
                 self.abs_pressures.extend(datum[2])
                 self.diff_pressures.extend(datum[3])
+                
+                # Add averaged readings
                 self.pressure_avg_times.append(np.mean(datum[1]))
                 self.abs_avg_pressures.append(np.mean(datum[2]))
                 self.diff_avg_pressures.append(np.mean(datum[3]))
+                
+                # Remove fast readings older than PLOT_TIME_RANGE seconds
+                pressures_start = find_nearest(np.array(self.pressure_times)-now, -PLOT_TIME_RANGE)
+                self.pressure_times = self.pressure_times[pressures_start:]
+                self.abs_pressures = self.abs_pressures[pressures_start:]
+                self.diff_pressures = self.diff_pressures[pressures_start:]
+                
+                # Remove average readings older than PLOT_TIME_RANGE seconds
+                avgs_start = find_nearest(np.array(self.pressure_avg_times)-now, -PLOT_TIME_RANGE)
+                self.pressure_avg_times = self.pressure_avg_times[avgs_start:]
+                self.abs_avg_pressures = self.abs_avg_pressures[avgs_start:]
+                self.diff_avg_pressures = self.diff_avg_pressures[avgs_start:]
+
+                self.plots_need_update = True
+            elif type(datum) is str:
+                self._add_to_log(datum)
             else:
                 self.data[datum[0]] = datum[1]
         
@@ -516,7 +524,6 @@ class GUI:
         # If command arg is not supplied, set to toggle state of valve
         if not command:
             s = self.ask_worker('get_%s_%s_trigger' % (speed, valve_number))
-            #open_code = 1 if valve_name != 'V3' else 0
             if valve_name == 'V3':
                 if s == 0:
                     command = 'close'
@@ -527,9 +534,6 @@ class GUI:
                     command = 'open'
                 else:
                     command = 'close'
-            #command = 'close' if s == open_code else 'open'
-            # print(s, 'so', command)
-            print(s, ' -> ', command, end=' -> ')
             
         signal =      1         if command == 'open' else 0
         action_text = 'OPENING' if command == 'open' else 'CLOSING'
@@ -599,6 +603,8 @@ class GUI:
         self.diff_gauge_label['text'] = '%.1f\nTorr' % round(self.diff_avg_pressures[-1], 1)
         
         self.fig.canvas.draw_idle()
+        
+        self.plots_need_update = False
         
     def puff(self, puff_number):
         permission = getattr(self, 'permission_%d' % puff_number).get()
