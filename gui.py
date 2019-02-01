@@ -1,35 +1,35 @@
 '''
 GUI for valve control in GPI system at W7-X. Original code by Kevin Tang.
 
-TODO: fix 0 entry in start time - do not accept 0 puff duration though
-TODO: require 5 entries less than 0 torr to stop pumping down
-TODO: save values only starting 1 second before T1
+FUTURE TODO: how to handle long puff delays
 '''
 
-from __future__ import print_function # for print to work inside lambda
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import os
 import time
+import math
 import datetime
-import multiprocessing
 import koheron 
 from GPI_2.GPI_2 import GPI_2
 import numpy as np
+from scipy.interpolate import interp1d
+from scipy.misc import derivative
+from scipy.signal import medfilt
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
 UPDATE_INTERVAL = 1  # seconds between plot updates
+CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
-LOOP_SLEEP = 0.2 # seconds between pump/fill loop iterations
-PRETRIGGER = 5 # seconds between T0 and T1
+PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
-SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/diff_pressures' # for puff pressure data
+SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/diff_pressures/' # for puff pressure data
 
 
 def uint32_to_volts(reading):
@@ -86,104 +86,6 @@ class FakeRedPitaya(object):
         def method(*args):
             return 0
         return method
-        
-
-class Worker:
-    '''
-    Sends all Red Pitaya commands and collects all Red Pitaya data,
-    never executing operations concurrently, which can return garbage.
-    '''
-    def __init__(self, commands_queue, data_queue):
-        self.commands_queue = commands_queue
-        self.data_queue = data_queue
-        self.commands = []
-        
-        try:
-            GPI_host = os.getenv('HOST', 'w7xrp2')
-            GPI_client = koheron.connect(GPI_host, name='GPI_2')
-            self.data_queue.put('Connected to Red Pitaya')
-            self.GPI_driver = GPI_2(GPI_client)
-        except Exception as e:
-            print(e)
-            self.GPI_driver = FakeRedPitaya()
-            # self.data_queue.put('Red Pitaya unreachable - simulating...')
-        
-        self.pressure_times = []
-        self.abs_pressures = []
-        self.diff_pressures = []
-        
-        self.last_send = 0
-        self.mainloop()
-        
-    def mainloop(self):
-        while True:
-            now = time.time()
-            if not self.commands_queue.empty():
-                self.commands.append(self.commands_queue.get_nowait())
-                print('Commands (worker perspective):', self.commands)
-            
-            # Run any commands scheduled to execute (technically) before now 
-            if self.commands:
-                commands_to_remove = []
-                for i, c in enumerate(self.commands):
-                    if now > c[0]:
-                        if len(c) == 3: 
-                            # Run command with an argument
-                            result = getattr(self.GPI_driver, c[1])(c[2])
-                        else: 
-                            # Run command with no argument
-                            result = getattr(self.GPI_driver, c[1])()
-                        if type(result) is int:
-                            self.data_queue.put((c[1], result))
-                        commands_to_remove.append(i)
-                for i in commands_to_remove:
-                    del self.commands[i]
-            
-            now = time.time()
-            self.pressure_times.append(now)
-            self.abs_pressures.append(self.abs_torr())
-            self.diff_pressures.append(self.diff_torr())
-            if now - self.last_send > UPDATE_INTERVAL:
-                self.data_queue.put(('pressures', self.pressure_times, self.abs_pressures, self.diff_pressures))
-                self.pressure_times = []
-                self.abs_pressures = []
-                self.diff_pressures = []
-                self.last_send = now
-            
-    def abs_torr(self):
-        abs_counts = self.GPI_driver.get_abs_gauge()
-        abs_voltage = 0.0661+4.526*uint32_to_volts(abs_counts) # calibration for IN 1 of W7XRP2 with a 0.252 divider 
-        return 5000/10*abs_voltage
-
-    def diff_torr(self):
-        diff_counts = self.GPI_driver.get_diff_gauge()
-        diff_voltage = 0.047+3.329*uint32_to_volts(diff_counts) # calibration for IN 2 of W7XRP2 with a 0.342 divider
-        return 100/10*diff_voltage
-        
-    def loop_pump_down(self):        
-        if self.abs_pressures[-1] > PUMPED_OUT:
-            self.handle_valve('V4', command='open')
-        
-        self._add_to_log('Starting to pump out')    
-        while self.abs_pressures[-1] > PUMPED_OUT:
-            time.sleep(LOOP_SLEEP)
-        
-        self.handle_valve('V4', command='close')
-        self._add_to_log('Completed pump out')    
-        
-    def loop_fill(self):
-        desired_pressure = float(self.desired_pressure_entry.get())
-        
-        if self.abs_pressures[-1] > desired_pressure:
-            self._add_to_log('No need to fill - already at desired pressure')
-            return 
-            
-        self._add_to_log('Starting fill to %.2f Torr' % desired_pressure)
-        while self.abs_pressures[-1] < desired_pressure-FILL_MARGIN:
-            self.handle_valve('V5', command='open')
-            time.sleep(LOOP_SLEEP)
-        self.handle_valve('V5', command='close')
-        self._add_to_log('Completed fill to %.2f Torr' % desired_pressure)
 
 
 class GUI:
@@ -232,7 +134,7 @@ class GUI:
         self.desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
 
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
-        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=lambda: start_thread(self.loop_fill))
+        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.handle_pump_refill)
         pump_refill_button = ttk.Button(fill_controls_line2, text='Pump down and refill', command=self.handle_pump_refill)
 
         self.permission_1 = tk.IntVar()
@@ -257,7 +159,7 @@ class GUI:
         GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, variable=self.GPI_safe_status, state=tk.DISABLED)
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
-        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handle_puff)
+        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handle_T0)
         
         self.pressure_times = []
         self.abs_pressures = []
@@ -337,16 +239,23 @@ class GUI:
         
         self._add_to_log('GUI initialized')
         
-        self.data_queue = multiprocessing.Queue()
-        self.commands_queue = multiprocessing.Queue()
-        self.worker_process = multiprocessing.Process(target=Worker, 
-                                                      args=(self.commands_queue, self.data_queue), 
-                                                      daemon=True)
-        self.worker_process.start()
+        try:
+            GPI_host = os.getenv('HOST', 'w7xrp2')
+            GPI_client = koheron.connect(GPI_host, name='GPI_2')
+            self._add_to_log('Connected to Red Pitaya')
+            self.GPI_driver = GPI_2(GPI_client)
+        except Exception as e:
+            print(e)
+            self.GPI_driver = FakeRedPitaya()
+            self._add_to_log('Red Pitaya unreachable - simulating...')
         
-        self.data = {}
-        self.plots_need_update = False
+        self.last_plot = None
+        self.filling = False
+        self.pumping_out = False
         self.mainloop_running = True   
+        self.T0 = None
+        self.done_puff_prep = False
+        self.both_puffs_done = None
         
         self.mainloop()
         
@@ -358,11 +267,43 @@ class GUI:
         self.handle_valve('FV2', command='close', no_confirm=True)
         self._add_to_log('Finished setting default state')
         
+        last_control = time.time()
+        self.last_plot = time.time() + UPDATE_INTERVAL # to get more fast data before first average
+        
         while self.mainloop_running:
+            now = time.time()
             self.get_data()
-                
-            if self.plots_need_update:
-                self.draw_plots()
+            
+            # Pump and fill loop logic
+            if now - last_control > CONTROL_INTERVAL:
+                if self.pumping_out:
+                    done_pumping = all([p < PUMPED_OUT for p in self.abs_avg_pressures[-5:]])
+                    if done_pumping:
+                        self.handle_valve('V4', command='close')
+                        self.pumping_out = False
+                        self._add_to_log('Completed pump out. Beginning fill.')
+                        self.handle_valve('V5', command='open')
+                        self.filling = True
+                if self.filling:
+                    desired_pressure = float(self.desired_pressure_entry.get())
+                    if self.abs_avg_pressures[-1] > desired_pressure - FILL_MARGIN:
+                        self.handle_valve('V5', command='close')
+                        self.filling = False
+                        self._add_to_log('Completed fill to %.2f Torr' % desired_pressure)
+                last_control =  now
+            
+            # Stuff to do before and after puffs
+            if self.T0:
+                first_puff_start = 0 if self.start(1) == 0 or self.start(2) == 0 else \
+                                   min(self.start(1) or math.inf, self.start(2) or math.inf)
+                if now > self.T0 + PRETRIGGER - 5 + first_puff_start and not self.done_puff_prep:
+                    self.handle_valve('V3', command='close')
+                    self.done_puff_prep = True
+                if now > self.T0 + PRETRIGGER + self.both_puffs_done + 2:
+                    self.handle_valve('V3', command='open')
+                    self._change_puff_gui_state(tk.NORMAL)
+                    self.plot_puffs()
+                    self.T0 = None
                 
             self.root.update_idletasks()
             self.root.update()
@@ -406,16 +347,8 @@ class GUI:
         elements = [self.permission_1_check, self.start_1_entry, 
                     self.duration_1_entry, self.permission_2_check,
                     self.start_2_entry, self.duration_2_entry]
-        for element in elements:
-            try: 
-                element.config(state=state)
-            except: 
-                pass
-        
-    @property
-    def rel_avg_times(self):
-        now = time.time()
-        return [t - now for t in self.pressure_avg_times]
+        for e in elements:
+            e.config(state=state)
         
     def start(self, puff_number):
         try:
@@ -430,155 +363,52 @@ class GUI:
             return float(text)
         except:
             return None
-            
-    def ask_worker(self, command):
-        # Issue command to be executed at time 0 (ASAP)
-        self.commands_queue.put((0, command))
-        # Wait for result of command to appear in data queue
-        while command not in self.data.keys():
-            self.get_data()
-        return self.data[command]
+        
+    def abs_torr(self):
+        abs_counts = self.GPI_driver.get_abs_gauge()
+        abs_voltage = 0.0661+4.526*uint32_to_volts(abs_counts) # calibration for IN 1 of W7XRP2 with a 0.252 divider 
+        return 5000/10*abs_voltage
+
+    def diff_torr(self):
+        diff_counts = self.GPI_driver.get_diff_gauge()
+        diff_voltage = 0.047+3.329*uint32_to_volts(diff_counts) # calibration for IN 2 of W7XRP2 with a 0.342 divider
+        return 100/10*diff_voltage
         
     def get_data(self):
-        while not self.data_queue.empty():
-            datum = self.data_queue.get_nowait()
-            now = time.time()
-            if datum[0] == 'pressures':
-                # Add fast readings
-                self.pressure_times.extend(datum[1])
-                self.abs_pressures.extend(datum[2])
-                self.diff_pressures.extend(datum[3])
-                
-                # Add averaged readings
-                self.pressure_avg_times.append(np.mean(datum[1]))
-                self.abs_avg_pressures.append(np.mean(datum[2]))
-                self.diff_avg_pressures.append(np.mean(datum[3]))
-                
-                # Remove fast readings older than PLOT_TIME_RANGE seconds
-                pressures_start = find_nearest(np.array(self.pressure_times)-now, -PLOT_TIME_RANGE)
-                self.pressure_times = self.pressure_times[pressures_start:]
-                self.abs_pressures = self.abs_pressures[pressures_start:]
-                self.diff_pressures = self.diff_pressures[pressures_start:]
-                
-                # Remove average readings older than PLOT_TIME_RANGE seconds
-                avgs_start = find_nearest(np.array(self.pressure_avg_times)-now, -PLOT_TIME_RANGE)
-                self.pressure_avg_times = self.pressure_avg_times[avgs_start:]
-                self.abs_avg_pressures = self.abs_avg_pressures[avgs_start:]
-                self.diff_avg_pressures = self.diff_avg_pressures[avgs_start:]
+        # Add fast readings
+        times, abs_pressures, diff_pressures = zip(*[(time.time(), self.abs_torr(), self.diff_torr()) for _ in range(100)])
+        self.pressure_times.extend(times)
+        self.abs_pressures.extend(abs_pressures)
+        self.diff_pressures.extend(diff_pressures)
+        
+        now = time.time()
+        if now - self.last_plot > UPDATE_INTERVAL:
+            # Add latest average reading
+            interval_start = find_nearest(np.array(self.pressure_times)-now, -UPDATE_INTERVAL)
+            self.pressure_avg_times.append(np.mean(self.pressure_times[interval_start:]))
+            self.abs_avg_pressures.append(np.mean(self.abs_pressures[interval_start:]))
+            self.diff_avg_pressures.append(np.mean(self.diff_pressures[interval_start:]))
+            
+            # Remove fast readings older than PLOT_TIME_RANGE seconds
+            if not self.T0: # in case the puff delays are longer than PLOT_TIME_RANGE
+                range_start = find_nearest(np.array(self.pressure_times)-now, -PLOT_TIME_RANGE)
+                self.pressure_times = self.pressure_times[range_start:]
+                self.abs_pressures = self.abs_pressures[range_start:]
+                self.diff_pressures = self.diff_pressures[range_start:]
+            
+            # Remove average readings older than PLOT_TIME_RANGE seconds
+            avgs_start = find_nearest(np.array(self.pressure_avg_times)-now, -PLOT_TIME_RANGE)
+            self.pressure_avg_times = self.pressure_avg_times[avgs_start:]
+            self.abs_avg_pressures = self.abs_avg_pressures[avgs_start:]
+            self.diff_avg_pressures = self.diff_avg_pressures[avgs_start:]
 
-                self.plots_need_update = True
-            elif type(datum) is str:
-                # Data is a message to be added to the GUI log
-                self._add_to_log(datum)
-            else:
-                # Data is the result of a command
-                self.data[datum[0]] = datum[1]
-        
-    def handle_valve(self, valve_name, command=None, no_confirm=True):
-        if valve_name == 'FV2':
-            speed = 'fast'
-            valve_number = 1
-        else:
-            speed = 'slow'
-            valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
+            self.draw_plots()
+            self.last_plot = now
             
-        # If command arg is not supplied, set to toggle state of valve
-        if not command:
-            s = self.ask_worker('get_%s_%s_trigger' % (speed, valve_number))
-            if valve_name == 'V3':
-                if s == 0:
-                    command = 'close'
-                else:
-                    command = 'open'
-            else:
-                if s == 0:
-                    command = 'open'
-                else:
-                    command = 'close'
-            
-        signal =      1         if command == 'open' else 0
-        action_text = 'OPENING' if command == 'open' else 'CLOSING'
-        fill =        'green'   if command == 'open' else 'red'
-        self._add_to_log(action_text + ' ' + valve_name)
-        
-            
-        if valve_name == 'V3': # this valve's signals are reversed relative to normal
-            signal = int(not signal)
-        
-        def action():
-            # Send signal
-            self.commands_queue.put((0, 'set_%s_%s_trigger' % (speed, valve_number), signal))
-            
-            # Getting rid of this means you have to click twice to change apparent state
-            if speed == 'slow':
-                self.ask_worker('get_%s_%s_trigger' % (speed, valve_number))
-            
-            # Change indicator color    
-            getattr(self, '%s_indicator' % valve_name).config(bg=fill)
-                
-        if no_confirm:
-            action()
-        else:
-            self._confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
-                        
-    def handle_safe_state(self):
-        checkbox_status = self.GPI_safe_status.get()
-        # self.GPI_driver.set_GPI_safe_state(checkbox_status)
-        
-    def handle_permission(self, puff_number):
-        '''
-        May be possible to remove this method. Does Red Pitaya even check permission?
-        '''
-        permission = getattr(self, 'permission_%d' % puff_number).get()
-        # getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(int(permission))
-        
-    def handle_pump_refill(self):
-        pass
-        
-    def handle_puff(self):
-        self._add_to_log('---T0---')
-        self._change_puff_gui_state(tk.DISABLED)
-        valid_duration_1 = 0 < self.duration(1) < 2
-        puff_1_happening = self.permission_1.get() and self.start(1) and valid_duration_1
-        if puff_1_happening:
-            self.commands_queue.put((0, 'set_fast_1_trigger', self.start(1)*1000))
-            self.commands_queue.put((0, 'set_fast_1_duration', self.duration(1)*1000))
-            self._add_to_log('Dispatched puff 1')
-            
-        valid_duration_2 = 0 < self.duration(2) < 2
-        puff_2_happening = self.permission_2.get() and self.start(2) and valid_duration_2
-        if puff_2_happening:
-            self.commands_queue.put((0, 'set_fast_2_trigger', self.start(2)*1000))
-            self.commands_queue.put((0, 'set_fast_2_duration', self.duration(2)*1000))
-            self._add_to_log('Dispatched puff 2')
-            
-    def loop_puff(self):
-        T0 = time.time()
-        self.handle_valve('V3', command='close')
-                
-        # Save pressure data
-        time.sleep(2)
-        try:
-            relative_times = self.rel_avg_times
-            # matplotlib.use('Agg')
-            pressures = [p for t,p in zip(relative_times, self.diff_pressures) if t > -1]
-            relative_times = [t for t in relative_times if t > -1] 
-            np.save(SAVE_FOLDER + 'diff_pressure_%d.npy' % int(T0), [relative_times, pressures])
-            plt.plot(relative_times, pressures)
-            plt.xlabel('t-T1 (s)')
-            plt.ylabel('Diff. pressure (Torr)')
-            plt.savefig(SAVE_FOLDER + 'diff_pressure_%d.png' % int(T0))
-            self._add_to_log('Pressure data saved with ID %d' % T0)
-        except Exception as e:
-            self._add_to_log('Save pressure data failed')
-            print('Save pressure data failed:', e)
-            
-        self.handle_valve('V3', command='open')
-        self._change_puff_gui_state(tk.NORMAL)
-
     def draw_plots(self):
         # Do not attempt to draw plots if no data has been collected
-        relative_times = self.rel_avg_times
+        now = time.time()
+        relative_times = [t - now for t in self.pressure_avg_times]
         if not relative_times:
             return
         self.ax_diff.cla()
@@ -604,7 +434,126 @@ class GUI:
         
         self.fig.canvas.draw_idle()
         
-        self.plots_need_update = False
+    def handle_valve(self, valve_name, command=None, no_confirm=True):
+        if valve_name == 'FV2':
+            speed = 'fast'
+            valve_number = 1
+        else:
+            speed = 'slow'
+            valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
+            
+        # If command arg is not supplied, set to toggle state of valve
+        if not command:
+            s = getattr(self.GPI_driver, 'get_%s_%s_trigger_sts' % (speed, valve_number))()
+            if valve_name == 'V3':
+                if s == 0:
+                    command = 'close'
+                else:
+                    command = 'open'
+            else:
+                if s == 0:
+                    command = 'open'
+                else:
+                    command = 'close'
+            
+        signal =      1         if command == 'open' else 0
+        action_text = 'OPENING' if command == 'open' else 'CLOSING'
+        fill =        'green'   if command == 'open' else 'red'
+        self._add_to_log(action_text + ' ' + valve_name)
+        
+            
+        if valve_name == 'V3': # this valve's signals are reversed relative to normal
+            signal = int(not signal)
+        
+        def action():
+            # Send signal
+            getattr(self.GPI_driver, 'set_%s_%s_trigger' % (speed, valve_number))(signal)
+            
+            # Change indicator color    
+            getattr(self, '%s_indicator' % valve_name).config(bg=fill)
+                
+        if no_confirm:
+            action()
+        else:
+            self._confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
+                        
+    def handle_safe_state(self):
+        checkbox_status = self.GPI_safe_status.get()
+        # self.GPI_driver.set_GPI_safe_state(checkbox_status)
+        
+    def handle_permission(self, puff_number):
+        '''
+        May be possible to remove this method. Does Red Pitaya even check permission?
+        '''
+        permission = getattr(self, 'permission_%d' % puff_number).get()
+        # getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(int(permission))
+        
+    def handle_pump_refill(self):
+        if self.abs_pressures[-1] > PUMPED_OUT:
+            self._add_to_log('Starting to pump out')
+            self.handle_valve('V4', command='open')
+            self.pumping_out = True
+        else:
+            self._add_to_log('No need to pump out')
+        
+    def handle_T0(self):
+        valid_start_1 = self.start(1) is not None and self.start(1) >= 0
+        valid_start_2 = self.start(2) is not None and self.start(2) >= 0
+        valid_duration_1 = self.duration(1) and 0 < self.duration(1) < 2
+        valid_duration_2 = self.duration(2) and 0 < self.duration(2) < 2
+        puff_1_happening = self.permission_1.get() and valid_start_1 and valid_duration_1
+        puff_2_happening = self.permission_2.get() and valid_start_2 and valid_duration_2
+        if not (puff_1_happening or puff_2_happening):
+            self._add_to_log('Error: invalid puff entries')
+            return
+            
+        self.T0 = time.time()
+        self._add_to_log('---T0---')
+        self.root.after(int(PRETRIGGER*1000), self._add_to_log, '---T1---')
+        
+        self.done_puff_prep = False
+        
+        puff_1_done = self.start(1) + self.duration(1) if puff_1_happening else 0
+        puff_2_done = self.start(2) + self.duration(2) if puff_2_happening else 0
+        self.both_puffs_done = max(puff_1_done, puff_2_done)
+        
+        self._change_puff_gui_state(tk.DISABLED)
+
+        if puff_1_happening:
+            self.GPI_driver.set_fast_1_trigger(int(self.start(1)*1000))
+            self.GPI_driver.set_fast_1_duration(int(self.duration(1)*1000))
+            self.root.after(int((PRETRIGGER+self.start(1))*1000), self._add_to_log, 'Puff 1')
+            
+        if puff_2_happening:
+            self.GPI_driver.set_fast_2_trigger(int(self.start(2)*1000))
+            self.GPI_driver.set_fast_2_duration(int(self.duration(2)*1000))
+            self.root.after(int((PRETRIGGER+self.start(2))*1000), self._add_to_log, 'Puff 2')
+    
+    def plot_puffs(self):
+        try:
+            times = np.array(self.pressure_times) - (self.T0 + PRETRIGGER)
+            times, pressures = zip(*[(_t, _d) for (_t, _d) in zip(times, self.diff_pressures) if _t > -1])
+            np.save(SAVE_FOLDER + 'diff_pressure_%d.npy' % int(self.T0), [times, pressures])
+            plt.figure()
+            plt.suptitle(int(self.T0))
+            plt.subplot(211)
+            plt.plot(times, pressures)
+            plt.ylabel('Diff. pressure (Torr)')
+            plt.subplot(212)
+            f = interp1d(times, pressures, kind='cubic')
+            newtimes = np.arange(times[0], times[-1], 0.0005)
+            dp = [0.798*derivative(f, ti, dx=.005) for ti in newtimes[100:-100]]
+            plt.plot(newtimes[100:-100], medfilt(dp,9))
+            plt.xlabel('t-T1 (s)')
+            plt.ylabel('Flow rate (Torr-L/sec)')
+            plt.savefig(SAVE_FOLDER + 'diff_pressure_%d.png' % int(self.T0))
+            plt.ion() # to continue execution after closing window
+            plt.show()
+            plt.pause(0.001) # to continue execution after closing window
+            self._add_to_log('Saved data with suffix %d' % int(self.T0))
+        except Exception as e:
+            self._add_to_log('Save pressure data failed: %s' % e)
+
  
 if __name__ == '__main__':
     tk_root = tk.Tk()
