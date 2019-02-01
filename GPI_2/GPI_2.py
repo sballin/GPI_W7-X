@@ -114,20 +114,21 @@ class GPI_2(object):
 
 
     @command()
-    def get_slow_1_trigger(self):
+    def get_slow_1_trigger_sts(self):
         return self.client.recv_uint32()
 
 
     @command()
-    def get_slow_2_trigger(self):
+    def get_slow_2_trigger_sts(self):
         return self.client.recv_uint32()
 
 
     @command()
-    def get_slow_3_trigger(self):
+    def get_slow_3_trigger_sts(self):
         return self.client.recv_uint32()
 
 
     @command()
-    def get_slow_4_trigger(self):
+    def get_slow_4_trigger_sts(self):
         return self.client.recv_uint32()
+
