@@ -156,7 +156,7 @@ class GUI:
         
         GPI_safe_state_label = tk.Label(permission_controls_frame, text='GPI safe state', background=gray)
         self.GPI_safe_status = tk.IntVar()
-        GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, variable=self.GPI_safe_status, state=tk.DISABLED)
+        GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, variable=self.GPI_safe_status)
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
         GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handle_T0)
@@ -254,8 +254,11 @@ class GUI:
         self.pumping_out = False
         self.mainloop_running = True   
         self.T0 = None
+        self.sent_T1_to_RP = False
         self.done_puff_prep = False
         self.both_puffs_done = None
+        
+        self.GPI_driver.set_GPI_safe_state(0)
         
         self.mainloop()
         
@@ -286,7 +289,7 @@ class GUI:
                         self.filling = True
                 if self.filling:
                     desired_pressure = float(self.desired_pressure_entry.get())
-                    if self.abs_avg_pressures[-1] > desired_pressure - FILL_MARGIN:
+                    if self.abs_pressures[-1] > desired_pressure - FILL_MARGIN:
                         self.handle_valve('V5', command='close')
                         self.filling = False
                         self._add_to_log('Completed fill to %.2f Torr' % desired_pressure)
@@ -299,11 +302,19 @@ class GUI:
                 if now > self.T0 + PRETRIGGER - 5 + first_puff_start and not self.done_puff_prep:
                     self.handle_valve('V3', command='close')
                     self.done_puff_prep = True
+                if now > self.T0 + PRETRIGGER and not self.sent_T1_to_RP:
+                    self._add_to_log('---T1---')
+                    self._add_to_log('W7X_timings: %s' % self.GPI_driver.get_W7X_timings())
+                    self.GPI_driver.set_w7x_ctl_trigger(1)
+                    self._add_to_log('W7X_timings: %s' % self.GPI_driver.get_W7X_timings())
+                    self.sent_T1_to_RP = True
                 if now > self.T0 + PRETRIGGER + self.both_puffs_done + 2:
                     self.handle_valve('V3', command='open')
                     self._change_puff_gui_state(tk.NORMAL)
                     self.plot_puffs()
                     self.T0 = None
+                    self.sent_T1_to_RP = False
+                    self.GPI_driver.set_w7x_ctl_trigger(0)
                 
             self.root.update_idletasks()
             self.root.update()
@@ -460,7 +471,6 @@ class GUI:
         action_text = 'OPENING' if command == 'open' else 'CLOSING'
         fill =        'green'   if command == 'open' else 'red'
         self._add_to_log(action_text + ' ' + valve_name)
-        
             
         if valve_name == 'V3': # this valve's signals are reversed relative to normal
             signal = int(not signal)
@@ -479,14 +489,15 @@ class GUI:
                         
     def handle_safe_state(self):
         checkbox_status = self.GPI_safe_status.get()
-        # self.GPI_driver.set_GPI_safe_state(checkbox_status)
+        self.GPI_driver.set_GPI_safe_state(checkbox_status)
         
     def handle_permission(self, puff_number):
         '''
         May be possible to remove this method. Does Red Pitaya even check permission?
         '''
-        permission = getattr(self, 'permission_%d' % puff_number).get()
-        # getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(int(permission))
+        pass
+        # permission = getattr(self, 'permission_%d' % puff_number).get()
+        # getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(permission)
         
     def handle_pump_refill(self):
         if self.abs_pressures[-1] > PUMPED_OUT:
@@ -507,9 +518,9 @@ class GUI:
             self._add_to_log('Error: invalid puff entries')
             return
             
+        self.GPI_driver.reset_time(0) # reset puff countup timer
         self.T0 = time.time()
         self._add_to_log('---T0---')
-        self.root.after(int(PRETRIGGER*1000), self._add_to_log, '---T1---')
         
         self.done_puff_prep = False
         
