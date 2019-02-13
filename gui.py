@@ -114,6 +114,7 @@ class GUI:
         background.configure(background='#C3C3C3')
 
         self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='red')
+        self.FV2_indicator.bind("<Button-1>", lambda event: self.handle_valve('FV2'))
 
         self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='red')
         self.V5_indicator.bind("<Button-1>", lambda event: self.handle_valve('V5'))
@@ -134,7 +135,7 @@ class GUI:
         self.desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
 
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
-        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.handle_pump_refill)
+        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.handle_fill)
         pump_refill_button = ttk.Button(fill_controls_line2, text='Pump down and refill', command=self.handle_pump_refill)
 
         self.permission_1 = tk.IntVar()
@@ -258,7 +259,7 @@ class GUI:
         self.done_puff_prep = False
         self.both_puffs_done = None
         
-        self.GPI_driver.set_GPI_safe_state(0)
+        #self.GPI_driver.set_GPI_safe_state(0)
         
         self.mainloop()
         
@@ -267,8 +268,9 @@ class GUI:
         self.handle_valve('V3', command='open', no_confirm=True)
         self.handle_valve('V4', command='close', no_confirm=True)
         self.handle_valve('V5', command='close', no_confirm=True)
-        self.handle_valve('FV2', command='close', no_confirm=True)
+        # self.handle_valve('FV2', command='close', no_confirm=True)
         self._add_to_log('Finished setting default state')
+        self.GPI_driver.send_T1(0)
         
         last_control = time.time()
         self.last_plot = time.time() + UPDATE_INTERVAL # to get more fast data before first average
@@ -303,10 +305,8 @@ class GUI:
                     self.handle_valve('V3', command='close')
                     self.done_puff_prep = True
                 if now > self.T0 + PRETRIGGER and not self.sent_T1_to_RP:
-                    self._add_to_log('---T1---')
-                    self._add_to_log('W7X_timings: %s' % self.GPI_driver.get_W7X_timings())
-                    self.GPI_driver.set_w7x_ctl_trigger(1)
-                    self._add_to_log('W7X_timings: %s' % self.GPI_driver.get_W7X_timings())
+                    self.GPI_driver.send_T1(1)
+                    self.GPI_driver.send_T1(0)
                     self.sent_T1_to_RP = True
                 if now > self.T0 + PRETRIGGER + self.both_puffs_done + 2:
                     self.handle_valve('V3', command='open')
@@ -314,7 +314,6 @@ class GUI:
                     self.plot_puffs()
                     self.T0 = None
                     self.sent_T1_to_RP = False
-                    self.GPI_driver.set_w7x_ctl_trigger(0)
                 
             self.root.update_idletasks()
             self.root.update()
@@ -326,7 +325,7 @@ class GUI:
                               # Fatal Python Error: PyEval_RestoreThread: NULL tstate
         
     def _add_to_log(self, text):
-        time_string = datetime.datetime.now().strftime('%H:%M:%S')
+        time_string = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
         self.log.insert(tk.END, ' ' + time_string + ' ' + text)
         self.log.yview(tk.END)
 
@@ -447,37 +446,31 @@ class GUI:
         
     def handle_valve(self, valve_name, command=None, no_confirm=True):
         if valve_name == 'FV2':
-            speed = 'fast'
-            valve_number = 1
+            getter_method = 'get_fast_sts'
+            setter_method = 'set_fast'
         else:
-            speed = 'slow'
             valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
+            getter_method = 'get_slow_%s_sts' % valve_number
+            setter_method = 'set_slow_%s' % valve_number
             
         # If command arg is not supplied, set to toggle state of valve
         if not command:
-            s = getattr(self.GPI_driver, 'get_%s_%s_trigger_sts' % (speed, valve_number))()
-            if valve_name == 'V3':
-                if s == 0:
-                    command = 'close'
-                else:
-                    command = 'open'
-            else:
-                if s == 0:
-                    command = 'open'
-                else:
-                    command = 'close'
-            
-        signal =      1         if command == 'open' else 0
-        action_text = 'OPENING' if command == 'open' else 'CLOSING'
-        fill =        'green'   if command == 'open' else 'red'
+            current_status = getattr(self.GPI_driver, getter_method)()
+            # V3 has opposite status logic 
+            current_status = int(not current_status) if valve_name == 'V3' else current_status
+            command = 'open' if current_status == 0 else 'close'
+        if command == 'open':
+            signal, action_text, fill = 1, 'OPENING', 'green'
+        elif command == 'close':
+            signal, action_text, fill = 0, 'CLOSING', 'red'
         self._add_to_log(action_text + ' ' + valve_name)
             
-        if valve_name == 'V3': # this valve's signals are reversed relative to normal
-            signal = int(not signal)
+        # V3 expects opposite signals
+        signal = int(not signal) if valve_name == 'V3' else signal
         
         def action():
             # Send signal
-            getattr(self.GPI_driver, 'set_%s_%s_trigger' % (speed, valve_number))(signal)
+            getattr(self.GPI_driver, setter_method)(signal)
             
             # Change indicator color    
             getattr(self, '%s_indicator' % valve_name).config(bg=fill)
@@ -495,10 +488,14 @@ class GUI:
         '''
         May be possible to remove this method. Does Red Pitaya even check permission?
         '''
-        pass
-        # permission = getattr(self, 'permission_%d' % puff_number).get()
-        # getattr(self.GPI_driver, 'set_fast_%d_permission' % puff_number)(permission)
+        permission = getattr(self, 'permission_%d' % puff_number).get()
+        getattr(self.GPI_driver, 'set_fast_permission_%d' % puff_number)(permission)
         
+    def handle_fill(self):
+        self._add_to_log('Beginning fill')
+        self.filling = True
+        self.handle_valve('V5', command='open')
+
     def handle_pump_refill(self):
         if self.abs_pressures[-1] > PUMPED_OUT:
             self._add_to_log('Starting to pump out')
@@ -518,27 +515,35 @@ class GUI:
             self._add_to_log('Error: invalid puff entries')
             return
             
-        self.GPI_driver.reset_time(0) # reset puff countup timer
         self.T0 = time.time()
         self._add_to_log('---T0---')
+        self.root.after(int(PRETRIGGER*1000), self._add_to_log, '---T1---')
         
         self.done_puff_prep = False
         
         puff_1_done = self.start(1) + self.duration(1) if puff_1_happening else 0
         puff_2_done = self.start(2) + self.duration(2) if puff_2_happening else 0
         self.both_puffs_done = max(puff_1_done, puff_2_done)
+        self.GPI_driver.reset_time(int(self.both_puffs_done*1000)) # reset puff countup timer
         
         self._change_puff_gui_state(tk.DISABLED)
 
         if puff_1_happening:
-            self.GPI_driver.set_fast_1_trigger(int(self.start(1)*1000))
-            self.GPI_driver.set_fast_1_duration(int(self.duration(1)*1000))
+            self.GPI_driver.set_fast_delay_1(int(self.start(1)*1000))
+            self.GPI_driver.set_fast_duration_1(int(self.duration(1)*1000))
             self.root.after(int((PRETRIGGER+self.start(1))*1000), self._add_to_log, 'Puff 1')
+        else:
+            self.GPI_driver.set_fast_delay_1(2+int(self.both_puffs_done*1000))
+            self.GPI_driver.set_fast_duration_1(2+int(self.both_puffs_done*1000))
             
         if puff_2_happening:
-            self.GPI_driver.set_fast_2_trigger(int(self.start(2)*1000))
-            self.GPI_driver.set_fast_2_duration(int(self.duration(2)*1000))
+            self.GPI_driver.set_fast_delay_2(int(self.start(2)*1000))
+            self.GPI_driver.set_fast_duration_2(int(self.duration(2)*1000))
             self.root.after(int((PRETRIGGER+self.start(2))*1000), self._add_to_log, 'Puff 2')
+        else:
+            self.GPI_driver.set_fast_delay_2(2+int(self.both_puffs_done*1000))
+            self.GPI_driver.set_fast_duration_2(2+int(self.both_puffs_done*1000))
+        
     
     def plot_puffs(self):
         try:
