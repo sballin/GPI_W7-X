@@ -11,8 +11,8 @@ build/
 tmp
 .Xil
 .vscode
-node_modules/
-instruments/
+#node_modules/
+#instruments/
 
 # Vivado
 *.jou

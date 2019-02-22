@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="tb_MLP_behav.wdb" id="1">
+         <top_modules>
+            <top_module name="glbl" />
+            <top_module name="tb_MLP" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <zoom_setting>
+      <ZoomStartTime time="8160000000fs"></ZoomStartTime>
+      <ZoomEndTime time="33180000001fs"></ZoomEndTime>
+      <Cursor1Time time="13580000000fs"></Cursor1Time>
+   </zoom_setting>
+   <column_width_setting>
+      <NameColumnWidth column_width="145"></NameColumnWidth>
+      <ValueColumnWidth column_width="122"></ValueColumnWidth>
+   </column_width_setting>
+   <WVObjectSize size="19" />
+   <wvobject type="logic" fp_name="/tb_MLP/adc_clk">
+      <obj_property name="ElementShortName">adc_clk</obj_property>
+      <obj_property name="ObjectShortName">adc_clk</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/period">
+      <obj_property name="ElementShortName">period[31:0]</obj_property>
+      <obj_property name="ObjectShortName">period[31:0]</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/Temp_In">
+      <obj_property name="ElementShortName">Temp_In[15:0]</obj_property>
+      <obj_property name="ObjectShortName">Temp_In[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/iSat_In">
+      <obj_property name="ElementShortName">iSat_In[15:0]</obj_property>
+      <obj_property name="ObjectShortName">iSat_In[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/vFloat_In">
+      <obj_property name="ElementShortName">vFloat_In[15:0]</obj_property>
+      <obj_property name="ObjectShortName">vFloat_In[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/LP_voltage">
+      <obj_property name="ElementShortName">LP_voltage[13:0]</obj_property>
+      <obj_property name="ObjectShortName">LP_voltage[13:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/CurRes_0/BRAMret">
+      <obj_property name="ElementShortName">BRAMret[15:0]</obj_property>
+      <obj_property name="ObjectShortName">BRAMret[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/volt_out">
+      <obj_property name="ElementShortName">volt_out[13:0]</obj_property>
+      <obj_property name="ObjectShortName">volt_out[13:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="other" fp_name="/tb_MLP/adc_clk_period">
+      <obj_property name="ElementShortName">adc_clk_period</obj_property>
+      <obj_property name="ObjectShortName">adc_clk_period</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/TempCalc_0/Temp">
+      <obj_property name="ElementShortName">Temp[15:0]</obj_property>
+      <obj_property name="ObjectShortName">Temp[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/iSatCalc_0/iSat">
+      <obj_property name="ElementShortName">iSat[15:0]</obj_property>
+      <obj_property name="ObjectShortName">iSat[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/vFloatCalc_0/vFloat">
+      <obj_property name="ElementShortName">vFloat[15:0]</obj_property>
+      <obj_property name="ObjectShortName">vFloat[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="other" fp_name="/tb_MLP/dut/vFloatCalc_0/U0/int_store">
+      <obj_property name="ElementShortName">int_store</obj_property>
+      <obj_property name="ObjectShortName">int_store</obj_property>
+   </wvobject>
+   <wvobject type="other" fp_name="/tb_MLP/dut/vFloatCalc_0/U0/rem_store">
+      <obj_property name="ElementShortName">rem_store</obj_property>
+      <obj_property name="ObjectShortName">rem_store</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/vFloatCalc_0/divisor_tdata">
+      <obj_property name="ElementShortName">divisor_tdata[15:0]</obj_property>
+      <obj_property name="ObjectShortName">divisor_tdata[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/vFloatCalc_0/dividend_tdata">
+      <obj_property name="ElementShortName">dividend_tdata[15:0]</obj_property>
+      <obj_property name="ObjectShortName">dividend_tdata[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/vFloatCalc_0/U0/BRAMret">
+      <obj_property name="ElementShortName">BRAMret[15:0]</obj_property>
+      <obj_property name="ObjectShortName">BRAMret[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/vFloatCalc_0/U0/storeSig">
+      <obj_property name="ElementShortName">storeSig[13:0]</obj_property>
+      <obj_property name="ObjectShortName">storeSig[13:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+   <wvobject type="array" fp_name="/tb_MLP/dut/vFloatCalc_0/U0/storeSig2">
+      <obj_property name="ElementShortName">storeSig2[15:0]</obj_property>
+      <obj_property name="ObjectShortName">storeSig2[15:0]</obj_property>
+      <obj_property name="Radix">SIGNEDDECRADIX</obj_property>
+   </wvobject>
+</wave_config>
