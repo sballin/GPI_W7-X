@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Koheron</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="author" content="Koheron">
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
+  <link rel="shortcut icon" href="kbird.ico">
+  <link rel="stylesheet" type="text/css" href="bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="_koheron.css">
+  <link rel="stylesheet" type="text/css" href="main.css">
+
+  <script type="text/javascript" src="jquery.min.js"></script>
+  <script type="text/javascript" src="bootstrap.min.js"></script>
+</head>
+
+<body>
+
+<div id="navigation">
+
+  <div id="navigation-links">
+    <img src="_koheron_logo.svg" alt="home" style="max-width: 100%;">
+    <a href="/">Home</a>
+    <a href="/koheron">Settings</a>
+  </div>
+
+  <button value="close" id="collapse-btn" onclick="navigation.collapseBtnClick(this); return false;">&#60;</button>
+
+</div>
+
+<div class="container-fuild" id="main">
+
+  <div class="container" style="margin-top: 10px;">
+
+    <h1>Bonjour!</h1>
+
+    <br><br>
+
+    <p>There is no web interface for this instrument.
+      You can write your own interface using the <a href="https://www.koheron.com/software-development-kit/documentation/typescript-api/">TypeScript API</a>
+      or the <a href="https://www.koheron.com/software-development-kit/documentation/python-api/">Python API</a>.</p>
+    </p>
+
+  </div>
+
+</div>
+
+<script src="app.js?random=<?php echo uniqid(); ?>"></script>
+
+<script language="javascript" type="text/javascript">
+
+  window.addEventListener("load", function() {
+    navigation = new Navigation(document);
+  }, false);
+
+</script>
+
+</body>
+</html>

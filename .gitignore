@@ -4,3 +4,8 @@ __pycache__/
 ._*
 *.swo
 diff_pressures/
+tmp/
+*.log
+*.str
+*.jou
+*.zip

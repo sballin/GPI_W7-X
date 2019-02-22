@@ -301,7 +301,7 @@ class GUI:
             if self.T0:
                 first_puff_start = 0 if self.start(1) == 0 or self.start(2) == 0 else \
                                    min(self.start(1) or math.inf, self.start(2) or math.inf)
-                if now > self.T0 + PRETRIGGER - 5 + first_puff_start and not self.done_puff_prep:
+                if now > self.T0 + PRETRIGGER - 1 + first_puff_start and not self.done_puff_prep:
                     self.handle_valve('V3', command='close')
                     self.done_puff_prep = True
                 if now > self.T0 + PRETRIGGER and not self.sent_T1_to_RP:
