@@ -24,3 +24,9 @@ vivado_*.str
 *.img
 
 venv/
+
+._*
+._.*
+__pycache__
+*.pyc
+.DS_Store

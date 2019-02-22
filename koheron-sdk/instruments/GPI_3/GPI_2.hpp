@@ -208,7 +208,7 @@ inline void GPI_2::start_fifo_acquisition() {
 }
 
 inline void GPI_2::fifo_acquisition_thread() {
-    constexpr auto fifo_sleep_for = std::chrono::nanoseconds(5000);
+    constexpr auto fifo_sleep_for = std::chrono::nanoseconds(1000000);
     fifo_acquisition_started = true;
     ctx.log<INFO>("Starting fifo acquisition");
     // adc_data.reserve(16777216);
