@@ -32,32 +32,51 @@ PUMPED_OUT = 0 # Torr, desired pumped out pressure
 SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/diff_pressures/' # for puff pressure data
 
 
-def uint32_to_volts(reading):
-    '''
-    Not really volts, but proportional. 
-    Calibration is inside diff_torr and abs_torr functions.
-    '''
+def int_to_float(reading):
     return 2/(2**14-1)*signed_conversion(reading)
     
-        
+    
 def signed_conversion(reading):
     '''
     Convert Red Pitaya binary output to a uint32.
     '''
-    binNumber = "{0:014b}".format(int(round(reading)))
-    binConv = ""
-    if int(binNumber[0], 2) == 1:
-        for bit in binNumber[1::]:
-            if bit == "1":
-                binConv += "0"
+    binConv = ''
+    if int(reading[0], 2) == 1:
+        for bit in reading[1::]:
+            if bit == '1':
+                binConv += '0'
             else:
-                binConv += "1"
+                binConv += '1'
         intNum = -int(binConv, 2) - 1
     else:
-        for bit in binNumber[1::]:
+        for bit in reading[1::]:
             binConv += bit
         intNum = int(binConv, 2)
     return intNum
+    
+    
+def abs_bin_to_torr(binary_string):
+    # Calibration for IN 1 of W7XRP2 with a 0.252 divider 
+    abs_voltage = 0.0661+4.526*int_to_float(binary_string) # 
+    # 500 Torr/Volt
+    return 500*abs_voltage
+    
+    
+def diff_bin_to_torr(binary_string):
+    # Calibration for IN 2 of W7XRP2 with a 0.342 divider
+    diff_voltage = 0.047+3.329*int_to_float(binary_string) 
+    # 10 Torr/Volt
+    return 10*diff_voltage
+    
+    
+def abs_torr(combined_string):
+    abs_binary_string = '{0:032b}'.format(combined_string)[-28:-14]
+    return abs_bin_to_torr(abs_binary_string)
+    
+    
+def diff_torr(combined_string):
+    diff_binary_string = '{0:032b}'.format(combined_string)[-14:]
+    return diff_bin_to_torr(diff_binary_string)
     
     
 def find_nearest(array, value):
@@ -374,19 +393,19 @@ class GUI:
         except:
             return None
         
-    def abs_torr(self):
+    def abs_torr_single_reading(self):
         abs_counts = self.GPI_driver.get_abs_gauge()
-        abs_voltage = 0.0661+4.526*uint32_to_volts(abs_counts) # calibration for IN 1 of W7XRP2 with a 0.252 divider 
-        return 5000/10*abs_voltage
+        bin_number = '{0:014b}'.format(abs_counts)
+        return abs_bin_to_torr(bin_number)
 
-    def diff_torr(self):
+    def diff_torr_single_reading(self):
         diff_counts = self.GPI_driver.get_diff_gauge()
-        diff_voltage = 0.047+3.329*uint32_to_volts(diff_counts) # calibration for IN 2 of W7XRP2 with a 0.342 divider
-        return 100/10*diff_voltage
+        bin_number = '{0:014b}'.format(diff_counts)
+        return diff_bin_to_torr(bin_number)
         
     def get_data(self):
         # Add fast readings
-        times, abs_pressures, diff_pressures = zip(*[(time.time(), self.abs_torr(), self.diff_torr()) for _ in range(100)])
+        times, abs_pressures, diff_pressures = zip(*[(time.time(), self.abs_torr_single_reading(), self.diff_torr_single_reading()) for _ in range(100)])
         self.pressure_times.extend(times)
         self.abs_pressures.extend(abs_pressures)
         self.diff_pressures.extend(diff_pressures)
