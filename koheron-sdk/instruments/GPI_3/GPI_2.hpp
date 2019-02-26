@@ -158,13 +158,17 @@ class GPI_2 {
     
     // Function to return data
     std::vector<uint32_t>& get_GPI_data() {
+        ctx.log<INFO>("adc_data_queue size: %d", adc_data_queue.size());
+        ctx.log<INFO>("get_GPI_data");
         if (dataAvailable) {
-            adc_data.reserve(adc_data_queue.size());
-            for (size_t i = 0; i < adc_data_queue.size(); i++) {
+            size_t queue_count = adc_data_queue.size();
+            adc_data.resize(queue_count);
+            for (size_t i = 0; i < queue_count; i++) {
                 adc_data[i] = adc_data_queue.front();
                 adc_data_queue.pop();
             }
             dataAvailable = false;
+            ctx.log<INFO>("adc_data_queue size: %d", adc_data_queue.size());
             return adc_data;
         } else {
             return empty_vector;
@@ -200,11 +204,11 @@ class GPI_2 {
 };
 
 inline void GPI_2::start_fifo_acquisition() {
-    // if (! fifo_acquisition_started) {
-    //     // fifo_buffer.fill(0);
-    //     fifo_thread = std::thread{&GPI_2::fifo_acquisition_thread, this};
-    //     fifo_thread.detach();
-    // }
+    if (! fifo_acquisition_started) {
+        // fifo_buffer.fill(0);
+        fifo_thread = std::thread{&GPI_2::fifo_acquisition_thread, this};
+        fifo_thread.detach();
+    }
 }
 
 inline void GPI_2::fifo_acquisition_thread() {
@@ -215,7 +219,7 @@ inline void GPI_2::fifo_acquisition_thread() {
     // adc_data.resize(0);
     empty_vector.resize(0);
     
-    // uint32_t dropped=0;
+    uint32_t dropped=0;
     
     // While loop to reserve the number of samples needed to be collected
     while (fifo_acquisition_started){
@@ -225,10 +229,10 @@ inline void GPI_2::fifo_acquisition_thread() {
             std::this_thread::sleep_for(fifo_sleep_for);
             // Clearing vector back to zero
             // adc_data.resize(0);
-            ctx.log<INFO>("vector cleared, adc_data size: %d", adc_data_queue.size());
+            ctx.log<INFO>("vector cleared, adc_data_queue size: %d", adc_data_queue.size());
         }
       
-        // dropped = fill_buffer(dropped);
+        dropped = fill_buffer(dropped);
         // if (dropped > 0){
         //     ctx.log<INFO>("Dropped samples: %d", dropped);
         // }
@@ -240,11 +244,12 @@ inline void GPI_2::fifo_acquisition_thread() {
 inline uint32_t GPI_2::fill_buffer(uint32_t dropped) {
     // Retrieving the number of samples to collect
     uint32_t samples=get_fifo_length();
-    ctx.log<INFO>("Samples: %d", samples); 
+    // ctx.log<INFO>("Samples: %d", samples); 
     
     // Collecting samples in buffer
     if (samples > 0) 
     {
+        dataAvailable = true; 
         // Checking for dropped samples
         if (samples >= 32768)
         {    
@@ -259,7 +264,6 @@ inline uint32_t GPI_2::fill_buffer(uint32_t dropped) {
         {
             adc_data_queue.pop();
         }
-        dataAvailable = true; 
     }
     // if ((dataAvailable == false) && (adc_data.length() > 0))
     // {
