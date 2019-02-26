@@ -405,10 +405,13 @@ class GUI:
         
     def get_data(self):
         # Add fast readings
-        times, abs_pressures, diff_pressures = zip(*[(time.time(), self.abs_torr_single_reading(), self.diff_torr_single_reading()) for _ in range(100)])
-        self.pressure_times.extend(times)
+        combined_pressure_history = self.GPI_driver.get_GPI_data()
+        now = time.time()
+        abs_pressures = [abs_torr(i) for i in combined_pressure_history]
+        diff_pressures = [diff_torr(i) for i in combined_pressure_history]
         self.abs_pressures.extend(abs_pressures)
         self.diff_pressures.extend(diff_pressures)
+        self.pressure_times = np.arange(now-0.0001*(len(self.abs_pressures)-1), now, 0.0001)
         
         now = time.time()
         if now - self.last_plot > UPDATE_INTERVAL:
