@@ -264,10 +264,10 @@ class GUI:
             GPI_host = os.getenv('HOST', HOST)
             GPI_client = koheron.connect(GPI_host, name='GPI_RP')
             self._add_to_log('Connected to Red Pitaya')
-            self.GPI_driver = GPI_RP(GPI_client)
+            self.RP_driver = GPI_RP(GPI_client)
         except Exception as e:
             print(e)
-            self.GPI_driver = FakeRedPitaya()
+            self.RP_driver = FakeRedPitaya()
             self._add_to_log('Red Pitaya unreachable - simulating...')
         
         self.last_plot = None
@@ -279,7 +279,7 @@ class GUI:
         self.done_puff_prep = False
         self.both_puffs_done = None
         
-        #self.GPI_driver.set_GPI_safe_state(0)
+        #self.RP_driver.set_GPI_safe_state(0)
         
         self.mainloop()
         
@@ -290,7 +290,7 @@ class GUI:
         self.handle_valve('V5', command='close', no_confirm=True)
         # self.handle_valve('FV2', command='close', no_confirm=True)
         self._add_to_log('Finished setting default state')
-        self.GPI_driver.send_T1(0)
+        self.RP_driver.send_T1(0)
         
         last_control = time.time()
         self.last_plot = time.time() + UPDATE_INTERVAL # to get more fast data before first average
@@ -327,8 +327,8 @@ class GUI:
                     self.handle_valve('V3', command='close')
                     self.done_puff_prep = True
                 if now > self.T0 + PRETRIGGER and not self.sent_T1_to_RP:
-                    self.GPI_driver.send_T1(1)
-                    self.GPI_driver.send_T1(0)
+                    self.RP_driver.send_T1(1)
+                    self.RP_driver.send_T1(0)
                     self.sent_T1_to_RP = True
                 if now > self.T0 + PRETRIGGER + self.both_puffs_done + 2:
                     self.handle_valve('V3', command='open')
@@ -397,18 +397,18 @@ class GUI:
             return None
         
     def abs_torr_single_reading(self):
-        abs_counts = self.GPI_driver.get_abs_gauge()
+        abs_counts = self.RP_driver.get_abs_gauge()
         bin_number = '{0:014b}'.format(abs_counts)
         return abs_bin_to_torr(bin_number)
 
     def diff_torr_single_reading(self):
-        diff_counts = self.GPI_driver.get_diff_gauge()
+        diff_counts = self.RP_driver.get_diff_gauge()
         bin_number = '{0:014b}'.format(diff_counts)
         return diff_bin_to_torr(bin_number)
         
     def get_data(self):
         # Add fast readings
-        combined_pressure_history = self.GPI_driver.get_GPI_data()
+        combined_pressure_history = self.RP_driver.get_GPI_data()
         now = time.time()
         abs_pressures = [abs_torr(i) for i in combined_pressure_history]
         diff_pressures = [diff_torr(i) for i in combined_pressure_history]
@@ -482,7 +482,7 @@ class GUI:
             
         # If command arg is not supplied, set to toggle state of valve
         if not command:
-            current_status = getattr(self.GPI_driver, getter_method)()
+            current_status = getattr(self.RP_driver, getter_method)()
             # V3 has opposite status logic 
             current_status = int(not current_status) if valve_name == 'V3' else current_status
             command = 'open' if current_status == 0 else 'close'
@@ -497,7 +497,7 @@ class GUI:
         
         def action():
             # Send signal
-            getattr(self.GPI_driver, setter_method)(signal)
+            getattr(self.RP_driver, setter_method)(signal)
             
             # Change indicator color    
             getattr(self, '%s_indicator' % valve_name).config(bg=fill)
@@ -509,14 +509,14 @@ class GUI:
                         
     def handle_safe_state(self):
         checkbox_status = self.GPI_safe_status.get()
-        self.GPI_driver.set_GPI_safe_state(checkbox_status)
+        self.RP_driver.set_GPI_safe_state(checkbox_status)
         
     def handle_permission(self, puff_number):
         '''
         May be possible to remove this method. Does Red Pitaya even check permission?
         '''
         permission = getattr(self, 'permission_%d' % puff_number).get()
-        getattr(self.GPI_driver, 'set_fast_permission_%d' % puff_number)(permission)
+        getattr(self.RP_driver, 'set_fast_permission_%d' % puff_number)(permission)
         
     def handle_fill(self):
         self._add_to_log('Beginning fill')
@@ -551,25 +551,25 @@ class GUI:
         puff_1_done = self.start(1) + self.duration(1) if puff_1_happening else 0
         puff_2_done = self.start(2) + self.duration(2) if puff_2_happening else 0
         self.both_puffs_done = max(puff_1_done, puff_2_done)
-        self.GPI_driver.reset_time(int(self.both_puffs_done*1000)) # reset puff countup timer
+        self.RP_driver.reset_time(int(self.both_puffs_done*1000)) # reset puff countup timer
         
         self._change_puff_gui_state(tk.DISABLED)
 
         if puff_1_happening:
-            self.GPI_driver.set_fast_delay_1(int(self.start(1)*1000))
-            self.GPI_driver.set_fast_duration_1(int(self.duration(1)*1000))
+            self.RP_driver.set_fast_delay_1(int(self.start(1)*1000))
+            self.RP_driver.set_fast_duration_1(int(self.duration(1)*1000))
             self.root.after(int((PRETRIGGER+self.start(1))*1000), self._add_to_log, 'Puff 1')
         else:
-            self.GPI_driver.set_fast_delay_1(2+int(self.both_puffs_done*1000))
-            self.GPI_driver.set_fast_duration_1(2+int(self.both_puffs_done*1000))
+            self.RP_driver.set_fast_delay_1(2+int(self.both_puffs_done*1000))
+            self.RP_driver.set_fast_duration_1(2+int(self.both_puffs_done*1000))
             
         if puff_2_happening:
-            self.GPI_driver.set_fast_delay_2(int(self.start(2)*1000))
-            self.GPI_driver.set_fast_duration_2(int(self.duration(2)*1000))
+            self.RP_driver.set_fast_delay_2(int(self.start(2)*1000))
+            self.RP_driver.set_fast_duration_2(int(self.duration(2)*1000))
             self.root.after(int((PRETRIGGER+self.start(2))*1000), self._add_to_log, 'Puff 2')
         else:
-            self.GPI_driver.set_fast_delay_2(2+int(self.both_puffs_done*1000))
-            self.GPI_driver.set_fast_duration_2(2+int(self.both_puffs_done*1000))
+            self.RP_driver.set_fast_delay_2(2+int(self.both_puffs_done*1000))
+            self.RP_driver.set_fast_duration_2(2+int(self.both_puffs_done*1000))
         
     
     def plot_puffs(self):
