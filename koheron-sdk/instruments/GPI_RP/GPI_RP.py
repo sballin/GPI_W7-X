@@ -7,7 +7,7 @@ import numpy as np
 
 from koheron import command
 
-class GPI_2(object):
+class GPI_RP(object):
     def __init__(self, client):
         self.client = client
         # self.n_pts = 16384

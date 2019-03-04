@@ -1,5 +1,5 @@
 ---
-name: GPI_2
+name: GPI_RP
 board: boards/red-pitaya
 version: 0.1.1
 
@@ -9,8 +9,9 @@ cores:
   - fpga/cores/axi_ctl_register_v1_0
   - fpga/cores/axi_sts_register_v1_0
   - fpga/cores/dna_reader_v1_0
-  - instruments/GPI_2/cores/data_collector_v1_0
-  - instruments/GPI_2/cores/outputs_v1_0
+  - instruments/GPI_RP/cores/data_collector_v1_0
+  - instruments/GPI_RP/cores/outputs_v1_0
+  - instruments/GPI_RP/cores/trig_delay_v1_0
 
 memory:
   - name: control
@@ -29,28 +30,31 @@ memory:
 control_registers:
   - led
   - GPI_safe_state
-  - slow_1_trigger
-  - slow_2_trigger
-  - slow_3_trigger
-  - slow_4_trigger
-  - fast_1_trigger
-  - fast_1_permission_1
-  - fast_1_duration_1
-  - fast_1_permission_2
-  - fast_1_duration_2
-  - fast_2_trigger
-  - fast_2_permission_1
-  - fast_2_duration_1
-  - fast_2_permission_2
-  - fast_2_duration_2
-
+  - slow_1_manual
+  - slow_2_manual
+  - slow_3_manual
+  - slow_4_manual
+  - fast_manual
+  - fast_permission_1
+  - fast_permission_2
+  - fast_delay_1
+  - fast_delay_2
+  - fast_duration_1
+  - fast_duration_2
+  - send_T1
+  - reset_time
 
 status_registers:
   - adc[n_adc]
-  - W7X_permission_in
-  - W7X_timings
+  - W7X_T1
+  - W7X_permission
   - abs_gauge
   - diff_gauge
+  - slow_1_sts
+  - slow_2_sts
+  - slow_3_sts
+  - slow_4_sts
+  - fast_sts
 
 parameters:
   fclk0: 166666667
@@ -62,20 +66,8 @@ parameters:
 xdc:
   - boards/red-pitaya/config/ports.xdc
   - boards/red-pitaya/config/clocks.xdc
-  - instruments/GPI_2/extension_connector.xdc
-
+  - instruments/GPI_RP/expansion_connector.xdc
 
 drivers:
-  - ./GPI_2.hpp
+  - ./GPI_RP.hpp
   - server/drivers/common.hpp
-
-# web:
-#   - web/koheron.ts
-#   - web/jquery.flot.d.ts
-#   - ./web/pulse_generator.ts
-#   - ./web/app.ts
-#   - ./web/control.ts
-#   - ./web/plot.ts
-#   - ./web/index.html
-#   - web/main.css
-#   - web/navigation.ts

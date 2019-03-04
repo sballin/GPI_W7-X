@@ -1,9 +1,9 @@
-/// GPI_2 driver
+/// GPI_RP driver
 ///
 /// (c) Koheron
 
-#ifndef __DRIVERS_GPI_2_HPP__
-#define __DRIVERS_GPI_2_HPP__
+#ifndef __DRIVERS_GPI_RP_HPP__
+#define __DRIVERS_GPI_RP_HPP__
 
 #include <atomic>
 #include <thread>
@@ -20,12 +20,11 @@ namespace Fifo_regs {
     constexpr uint32_t rlr = 0x24;
 }
 
-//constexpr uint32_t dac_size = mem::dac_range/sizeof(uint32_t);
 constexpr uint32_t adc_buff_size = 50000;
 
-class GPI_2 {
+class GPI_RP {
   public:
-    GPI_2(Context& ctx_)
+    GPI_RP(Context& ctx_)
     : ctx(ctx_)
     , ctl(ctx.mm.get<mem::control>())
     , sts(ctx.mm.get<mem::status>())
@@ -35,7 +34,7 @@ class GPI_2 {
         start_fifo_acquisition();
      }
 
-    // GPI_2 generator
+    // GPI_RP generator
     void set_led(uint32_t led) {
         ctl.write<reg::led>(led);
     }
@@ -148,31 +147,20 @@ class GPI_2 {
 
      // Function to return the buffer length
     uint32_t get_buffer_length() {
-        ctx.log<INFO>("get_buffer_length");
         return adc_data_queue.size();
     }
     
-    // string get_ctx() {
-    //     return ctx;
-    // }
-    
     // Function to return data
     std::vector<uint32_t>& get_GPI_data() {
-        ctx.log<INFO>("adc_data_queue size: %d", adc_data_queue.size());
-        ctx.log<INFO>("get_GPI_data");
-        if (dataAvailable) {
-            size_t queue_count = adc_data_queue.size();
-            adc_data.resize(queue_count);
-            for (size_t i = 0; i < queue_count; i++) {
-                adc_data[i] = adc_data_queue.front();
-                adc_data_queue.pop();
-            }
-            dataAvailable = false;
-            ctx.log<INFO>("adc_data_queue size: %d", adc_data_queue.size());
-            return adc_data;
-        } else {
-            return empty_vector;
+        // ctx.log<INFO>("adc_data_queue size: %d", adc_data_queue.size());
+        size_t queue_count = adc_data_queue.size();
+        adc_data.resize(queue_count);
+        for (size_t i = 0; i < queue_count; i++) {
+            adc_data[i] = adc_data_queue.front();
+            adc_data_queue.pop();
         }
+        dataAvailable = false;
+        return adc_data;
     }
 
     void wait_for(uint32_t n_pts) {
@@ -186,65 +174,56 @@ class GPI_2 {
     Memory<mem::control>& ctl;
     Memory<mem::status>& sts;
     Memory<mem::adc_fifo>& adc_fifo_map;
-    // Memory<mem::dac>& dac_map;
 
     std::queue<uint32_t> adc_data_queue;
     std::vector<uint32_t> adc_data;
-    std::vector<uint32_t> empty_vector;
     
     uint32_t fill_buffer(uint32_t);
 
     std::atomic<bool> fifo_acquisition_started{false};
     std::atomic<bool> dataAvailable{false};
-    std::atomic<uint32_t> collected{0};         //number of currently collected data
 
     std::thread fifo_thread;
     void fifo_acquisition_thread();
 
 };
 
-inline void GPI_2::start_fifo_acquisition() {
+inline void GPI_RP::start_fifo_acquisition() {
     if (! fifo_acquisition_started) {
-        // fifo_buffer.fill(0);
-        fifo_thread = std::thread{&GPI_2::fifo_acquisition_thread, this};
+        fifo_thread = std::thread{&GPI_RP::fifo_acquisition_thread, this};
         fifo_thread.detach();
     }
 }
 
-inline void GPI_2::fifo_acquisition_thread() {
+inline void GPI_RP::fifo_acquisition_thread() {
     constexpr auto fifo_sleep_for = std::chrono::nanoseconds(1000000);
     fifo_acquisition_started = true;
     ctx.log<INFO>("Starting fifo acquisition");
     // adc_data.reserve(16777216);
     // adc_data.resize(0);
-    empty_vector.resize(0);
     
     uint32_t dropped=0;
     
     // While loop to reserve the number of samples needed to be collected
     while (fifo_acquisition_started){
-        // Checking that data has not yet been collected      
-        if ((dataAvailable == false) && (adc_data.size() > 0)){
-            // Sleep to avoid a race condition while data is being transferred
-            std::this_thread::sleep_for(fifo_sleep_for);
-            // Clearing vector back to zero
-            // adc_data.resize(0);
-            ctx.log<INFO>("vector cleared, adc_data_queue size: %d", adc_data_queue.size());
-        }
-      
         dropped = fill_buffer(dropped);
-        // if (dropped > 0){
-        //     ctx.log<INFO>("Dropped samples: %d", dropped);
-        // }
         std::this_thread::sleep_for(fifo_sleep_for);
     }
 }
 
 // Member function to fill buffer array
-inline uint32_t GPI_2::fill_buffer(uint32_t dropped) {
+inline uint32_t GPI_RP::fill_buffer(uint32_t dropped) {
     // Retrieving the number of samples to collect
     uint32_t samples=get_fifo_length();
-    // ctx.log<INFO>("Samples: %d", samples); 
+    
+    // This has to go before samples > 0 check or it probably won't run
+    if (dataAvailable == false)
+    {
+        // Destroy old measurement data to prevent mem overflow
+        adc_data.clear(); 
+        adc_data.resize(0); 
+        // ctx.log<INFO>("adc_data resized to 0"); 
+    }
     
     // Collecting samples in buffer
     if (samples > 0) 
@@ -252,23 +231,13 @@ inline uint32_t GPI_2::fill_buffer(uint32_t dropped) {
         dataAvailable = true; 
         // Checking for dropped samples
         if (samples >= 32768)
-        {    
             dropped += 1;
-        }
         for (size_t i=0; i < samples; i++)
-        {  
             adc_data_queue.push(read_fifo());    
-            // collected = collected + 1;
-        }
         while (adc_data_queue.size() > adc_buff_size)
-        {
             adc_data_queue.pop();
-        }
     }
-    // if ((dataAvailable == false) && (adc_data.length() > 0))
-    // {
-    //     adc_data.resize(0);
-    // }
+
     return dropped;
 }
 

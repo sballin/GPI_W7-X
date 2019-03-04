@@ -12,7 +12,7 @@ import time
 import math
 import datetime
 import koheron 
-from GPI_2.GPI_2 import GPI_2
+from GPI_RP.GPI_RP import GPI_RP
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.misc import derivative
@@ -22,6 +22,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
+HOST = 'w7xrp2' # hostname of red pitaya being used
 UPDATE_INTERVAL = 1  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
@@ -260,10 +261,10 @@ class GUI:
         self._add_to_log('GUI initialized')
         
         try:
-            GPI_host = os.getenv('HOST', 'w7xrp2')
-            GPI_client = koheron.connect(GPI_host, name='GPI_2')
+            GPI_host = os.getenv('HOST', HOST)
+            GPI_client = koheron.connect(GPI_host, name='GPI_RP')
             self._add_to_log('Connected to Red Pitaya')
-            self.GPI_driver = GPI_2(GPI_client)
+            self.GPI_driver = GPI_RP(GPI_client)
         except Exception as e:
             print(e)
             self.GPI_driver = FakeRedPitaya()
@@ -296,7 +297,6 @@ class GUI:
         
         while self.mainloop_running:
             now = time.time()
-            self.get_data()
             
             # Pump and fill loop logic
             if now - last_control > CONTROL_INTERVAL:
@@ -315,6 +315,9 @@ class GUI:
                         self.filling = False
                         self._add_to_log('Completed fill to %.2f Torr' % desired_pressure)
                 last_control =  now
+                
+                # Get data on slower timescale now that it's queue-based
+                self.get_data()
             
             # Stuff to do before and after puffs
             if self.T0:
@@ -412,6 +415,8 @@ class GUI:
         self.abs_pressures.extend(abs_pressures)
         self.diff_pressures.extend(diff_pressures)
         self.pressure_times = np.arange(now-0.0001*(len(self.abs_pressures)-1), now, 0.0001)
+        if len(combined_pressure_history) == 50000:
+            self._add_to_log('Got 50,000 pressure readings')
         
         now = time.time()
         if now - self.last_plot > UPDATE_INTERVAL:

@@ -1,13 +1,13 @@
 import os
 import time
 import koheron
-from GPI_2.GPI_2 import GPI_2
+from GPI_RP.GPI_RP import GPI_RP
 from pylab import *
 import numpy as np
 
 GPI_host = os.getenv('HOST', 'w7xrp2')
-GPI_client = koheron.connect(GPI_host, name='GPI_2')
-GPI_driver = GPI_2(GPI_client)
+GPI_client = koheron.connect(GPI_host, name='GPI_RP')
+GPI_driver = GPI_RP(GPI_client)
 
 def signed_conversion(reading):
     '''
