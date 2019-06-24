@@ -29,6 +29,7 @@ PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
+MECH_PUMP_LIMIT = 750 # Torr, max pressure the mechanical pump should work on
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
 SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/diff_pressures/' # for puff pressure data
 
@@ -112,7 +113,7 @@ class GUI:
     def __init__(self, root):
         self.root = root
         self.root.title('GPI Valve Control')
-        win_width = int(1020)
+        win_width = int(1130)
         win_height = int(600)
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
@@ -122,16 +123,16 @@ class GUI:
         self.root.protocol('WM_DELETE_WINDOW', self._quit_tkinter)
         s=ttk.Style()
         s.theme_use('alt')
-        gray = '#C3C3C3'
+        gray = '#A3A3A3'
         self.root.config(background=gray)
         
         system_frame = tk.Frame(self.root, background=gray)
         image = Image.open('background.png')
-        image = image.resize((384, 600))
+        #image = image.resize((469, 600)) # I just resized the actual image
         photo = ImageTk.PhotoImage(image)
         background = tk.Label(system_frame, image=photo)
         background.image = photo
-        background.configure(background='#C3C3C3')
+        background.configure(background=gray)
 
         self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='red')
         self.FV2_indicator.bind("<Button-1>", lambda event: self.handle_valve('FV2'))
@@ -144,9 +145,12 @@ class GUI:
 
         self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='green')
         self.V3_indicator.bind("<Button-1>", lambda event: self.handle_valve('V3'))
+        
+        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='red')
+        self.V7_indicator.bind("<Button-1>", lambda event: self.handle_valve('V7'))
 
-        self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#1f77b4', fg='white', justify=tk.LEFT)
-        self.diff_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#ff7f0e', fg='white', justify=tk.LEFT)
+        self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#004DD4', fg='white', justify=tk.LEFT)
+        self.diff_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#DF7D00', fg='white', justify=tk.LEFT)
 
         controls_frame = tk.Frame(self.root, background=gray)
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
@@ -189,7 +193,7 @@ class GUI:
         self.abs_avg_pressures = []
         self.diff_avg_pressures = []
         
-        self.fig = Figure(figsize=(3,6), dpi=100, facecolor=gray)
+        self.fig = Figure(figsize=(3.5, 6), dpi=100, facecolor=gray)
         self.fig.subplots_adjust(left=0.2)
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
@@ -200,15 +204,21 @@ class GUI:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
         
+        # I use this to figure out valve label positions
+        # def click_location(event):
+        #     print('%.4f, %.4f' % (event.x/469, event.y/600)) # divide by image dimensions
+        # self.root.bind('<Button-1>', click_location)
+        
         # GUI element placement
         ## Column 1
         background.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.V3_indicator.place(relx=.472, rely=.548, relwidth=.043, relheight=.038)
-        self.V4_indicator.place(relx=.218, rely=.422, relwidth=.044, relheight=.039)
-        self.V5_indicator.place(relx=.339, rely=.346, relwidth=.06, relheight=.026)
-        self.FV2_indicator.place(relx=.665, rely=.055, relwidth=.06, relheight=.026)
-        self.abs_gauge_label.place(relx=.853, rely=.537)
-        self.diff_gauge_label.place(relx=.629, rely=.751)
+        self.V3_indicator.place(relx=.476, rely=.562, relwidth=.034, relheight=.038)
+        self.V4_indicator.place(relx=.092, rely=.395, relwidth=.036, relheight=.038)
+        self.V5_indicator.place(relx=.364, rely=.315, relwidth=.047, relheight=.026)
+        self.V7_indicator.place(relx=.204, rely=.277, relwidth=.03, relheight=.028)
+        self.FV2_indicator.place(relx=.635, rely=.067, relwidth=.05, relheight=.026)
+        self.abs_gauge_label.place(relx=.883, rely=.545)
+        self.diff_gauge_label.place(relx=.605, rely=.761)
         system_frame.pack(side=tk.LEFT)
         ## Column 2
         self.canvas.get_tk_widget().pack(side=tk.LEFT)
@@ -272,12 +282,14 @@ class GUI:
         
         self.last_plot = None
         self.filling = False
+        self.preparing_to_pump_out = False
         self.pumping_out = False
         self.mainloop_running = True   
         self.T0 = None
         self.sent_T1_to_RP = False
         self.done_puff_prep = False
         self.both_puffs_done = None
+        self.starting_up = True
         
         #self.RP_driver.set_GPI_safe_state(0)
         
@@ -288,6 +300,7 @@ class GUI:
         self.handle_valve('V3', command='open', no_confirm=True)
         self.handle_valve('V4', command='close', no_confirm=True)
         self.handle_valve('V5', command='close', no_confirm=True)
+        self.handle_valve('V7', command='close', no_confirm=True)
         # self.handle_valve('FV2', command='close', no_confirm=True)
         self._add_to_log('Finished setting default state')
         self.RP_driver.send_T1(0)
@@ -300,6 +313,12 @@ class GUI:
             
             # Pump and fill loop logic
             if now - last_control > CONTROL_INTERVAL:
+                if self.preparing_to_pump_out:
+                    if self.abs_avg_pressures[-1] < MECH_PUMP_LIMIT:
+                        self.handle_valve('V7', command='close')
+                        self.preparing_to_pump_out = False
+                        self._add_to_log('Completed prep for pump out')
+                        self.handle_pump_refill()
                 if self.pumping_out:
                     done_pumping = all([p < PUMPED_OUT for p in self.abs_avg_pressures[-5:]])
                     if done_pumping:
@@ -416,7 +435,12 @@ class GUI:
         self.diff_pressures.extend(diff_pressures)
         self.pressure_times = np.arange(now-0.0001*(len(self.abs_pressures)-1), now, 0.0001)
         if len(combined_pressure_history) == 50000:
-            self._add_to_log('Got 50,000 pressure readings')
+            # Show this message except during program startup, 
+            # when there is always a backlog of data
+            if not self.starting_up:
+                self._add_to_log('Lost some data due to network lag')
+            else:
+                self.starting_up = False
         
         now = time.time()
         if now - self.last_plot > UPDATE_INTERVAL:
@@ -452,6 +476,8 @@ class GUI:
         self.ax_abs.cla()
         
         # Absolute gauge plot setup
+        self.ax_abs.yaxis.tick_right()
+        self.ax_abs.yaxis.set_label_position('right')
         self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2)
         self.ax_abs.set_ylabel('Torr')
         plt.setp(self.ax_abs.get_xticklabels(), visible=False)
@@ -459,6 +485,8 @@ class GUI:
         self.ax_abs.patch.set_facecolor('#e3eff7')
         
         # Differential gauge plot setup
+        self.ax_diff.yaxis.tick_right()
+        self.ax_diff.yaxis.set_label_position('right')
         self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2)
         self.ax_diff.set_ylabel('Torr')
         self.ax_diff.set_xlabel('Seconds')
@@ -476,7 +504,7 @@ class GUI:
             getter_method = 'get_fast_sts'
             setter_method = 'set_fast'
         else:
-            valve_number = ['V5', 'V4', 'V3'].index(valve_name) + 1
+            valve_number = ['V5', 'V4', 'V3', 'V7'].index(valve_name) + 1
             getter_method = 'get_slow_%s_sts' % valve_number
             setter_method = 'set_slow_%s' % valve_number
             
@@ -524,7 +552,11 @@ class GUI:
         self.handle_valve('V5', command='open')
 
     def handle_pump_refill(self):
-        if self.abs_pressures[-1] > PUMPED_OUT:
+        if self.abs_pressures[-1] > MECH_PUMP_LIMIT:
+            self._add_to_log('Preparing for pump out')
+            self.handle_valve('V7', command='open')
+            self.preparing_to_pump_out = True
+        elif PUMPED_OUT < self.abs_pressures[-1] < MECH_PUMP_LIMIT:
             self._add_to_log('Starting to pump out')
             self.handle_valve('V4', command='open')
             self.pumping_out = True
@@ -580,13 +612,16 @@ class GUI:
             plt.figure()
             plt.suptitle(int(self.T0))
             plt.subplot(211)
+            pressures = medfilt(pressures, 11)
             plt.plot(times, pressures)
             plt.ylabel('Diff. pressure (Torr)')
             plt.subplot(212)
-            f = interp1d(times, pressures, kind='cubic')
+            f = interp1d(times, pressures, kind='linear')
             newtimes = np.arange(times[0], times[-1], 0.0005)
-            dp = [0.798*derivative(f, ti, dx=.005) for ti in newtimes[100:-100]]
-            plt.plot(newtimes[100:-100], medfilt(dp,9))
+            dp_coarse = [0.798*derivative(f, ti, dx=.02) for ti in newtimes[100:-100]]
+            dp_fine = [0.798*derivative(f, ti, dx=.005) for ti in newtimes[100:-100]]
+            plt.plot(newtimes[100:-100], medfilt(dp_fine,11))
+            plt.plot(newtimes[100:-100], medfilt(dp_coarse,11))
             plt.xlabel('t-T1 (s)')
             plt.ylabel('Flow rate (Torr-L/sec)')
             plt.savefig(SAVE_FOLDER + 'diff_pressure_%d.png' % int(self.T0))
