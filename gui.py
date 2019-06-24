@@ -315,10 +315,10 @@ class GUI:
             if now - last_control > CONTROL_INTERVAL:
                 if self.preparing_to_pump_out:
                     if self.abs_avg_pressures[-1] < MECH_PUMP_LIMIT:
+                        self._add_to_log('Completed prep for pump out')
                         self.handle_valve('V7', command='close')
                         self.preparing_to_pump_out = False
-                        self._add_to_log('Completed prep for pump out')
-                        self.handle_pump_refill()
+                        self.handle_pump_refill(skip_prep=True)
                 if self.pumping_out:
                     done_pumping = all([p < PUMPED_OUT for p in self.abs_avg_pressures[-5:]])
                     if done_pumping:
@@ -551,12 +551,22 @@ class GUI:
         self.filling = True
         self.handle_valve('V5', command='open')
 
-    def handle_pump_refill(self):
-        if self.abs_pressures[-1] > MECH_PUMP_LIMIT:
+    def handle_pump_refill(self, skip_prep=False):
+        '''
+        # Prepping for pump out
+        If the "pump-out and refill" button is pushed and the absolute pressure is > 750 Torr, 
+        then OPEN V7. CLOSE V7 when the pressure is below 750 Torr, and then OPEN V4. After V4 
+        is opened the logic is the same as it is now, i.e. pump out until the pressure has been 
+        < ~0 for xx seconds.
+        
+        This method only initiates the above processes. For the rest of the code related to this 
+        logic, see the mainloop method.
+        '''
+        if self.abs_avg_pressures[-1] > MECH_PUMP_LIMIT and not skip_prep:
             self._add_to_log('Preparing for pump out')
             self.handle_valve('V7', command='open')
             self.preparing_to_pump_out = True
-        elif PUMPED_OUT < self.abs_pressures[-1] < MECH_PUMP_LIMIT:
+        elif self.abs_avg_pressures[-1] > PUMPED_OUT:
             self._add_to_log('Starting to pump out')
             self.handle_valve('V4', command='open')
             self.pumping_out = True
