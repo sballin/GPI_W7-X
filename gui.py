@@ -29,8 +29,9 @@ PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
-MECH_PUMP_LIMIT = 750 # Torr, max pressure the mechanical pump should work on
+MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
+PLENUM_VOLUME = 0.802 # L 
 SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/diff_pressures/' # for puff pressure data
 
 
@@ -628,8 +629,8 @@ class GUI:
             plt.subplot(212)
             f = interp1d(times, pressures, kind='linear')
             newtimes = np.arange(times[0], times[-1], 0.0005)
-            dp_coarse = [0.798*derivative(f, ti, dx=.02) for ti in newtimes[100:-100]]
-            dp_fine = [0.798*derivative(f, ti, dx=.005) for ti in newtimes[100:-100]]
+            dp_coarse = [PLENUM_VOLUME*derivative(f, ti, dx=.02) for ti in newtimes[100:-100]]
+            dp_fine = [PLENUM_VOLUME*derivative(f, ti, dx=.005) for ti in newtimes[100:-100]]
             plt.plot(newtimes[100:-100], medfilt(dp_fine,11))
             plt.plot(newtimes[100:-100], medfilt(dp_coarse,11))
             plt.xlabel('t-T1 (s)')
