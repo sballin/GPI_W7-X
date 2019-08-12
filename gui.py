@@ -307,7 +307,7 @@ class GUI:
         self.RP_driver.send_T1(0)
         
         last_control = time.time()
-        self.last_plot = time.time() + UPDATE_INTERVAL # to get more fast data before first average
+        self.last_plot = time.time() + UPDATE_INTERVAL # +... to get more fast data before first average
         
         while self.mainloop_running:
             now = time.time()
@@ -356,9 +356,13 @@ class GUI:
                     self.plot_puffs()
                     self.T0 = None
                     self.sent_T1_to_RP = False
-                
-            self.root.update_idletasks()
+             
+            # Draw GUI and get callback results ((...).after(...))
             self.root.update()
+            
+            # Reduce CPU usage during non-crucial times
+            if not (self.preparing_to_pump_out or self.pumping_out or self.filling or self.T0):
+                time.sleep(.01)
                              
     def _quit_tkinter(self):
         self.mainloop_running = False # ends our custom while loop
