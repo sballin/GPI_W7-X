@@ -127,7 +127,7 @@ class GPI_RP {
         return sts.read<reg::fast_sts>();
     }
     
-    // Adc FIFO
+    // ADC FIFO
 
     uint32_t get_fifo_occupancy() {
        return adc_fifo_map.read<Fifo_regs::rdfo>();

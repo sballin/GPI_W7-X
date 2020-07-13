@@ -92,17 +92,21 @@ class GPI_RP(object):
     def set_fast_delay_1(self, state):
         pass
         
+        
     @command()
     def set_fast_duration_1(self, state):
         pass
+
 
     @command()
     def set_fast_permission_2(self, state):
         pass
 
+
     @command()
     def set_fast_delay_2(self, state):
         pass
+        
         
     @command()
     def set_fast_duration_2(self, state):
@@ -112,6 +116,7 @@ class GPI_RP(object):
     @command()
     def send_T1(self, state):
         pass
+
 
     @command()
     def get_W7X_permission(self):

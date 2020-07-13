@@ -22,7 +22,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
-HOST = 'w7xrp2' # hostname of red pitaya being used
+HOST = 'localhost' # hostname of red pitaya being used
+FAKE_RP = True
 UPDATE_INTERVAL = 1  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
@@ -95,19 +96,6 @@ def find_nearest(array, value):
     if idx > 0 and (idx == len(array) or np.fabs(value - array[idx-1]) < np.fabs(value - array[idx])):
         return idx-1
     return idx
-        
-        
-class FakeRedPitaya(object):
-    '''
-    Lets the GUI window open even if Red Pitaya cannot be reached.
-    '''
-    def __getattr__(self, name):
-        '''
-        Returns 0 for all Red Pitaya functions instead of raising errors.
-        '''
-        def method(*args):
-            return 0
-        return method
 
 
 class GUI:
@@ -271,15 +259,10 @@ class GUI:
         
         self._add_to_log('GUI initialized')
         
-        try:
-            GPI_host = os.getenv('HOST', HOST)
-            GPI_client = koheron.connect(GPI_host, name='GPI_RP')
-            self._add_to_log('Connected to Red Pitaya')
-            self.RP_driver = GPI_RP(GPI_client)
-        except Exception as e:
-            print(e)
-            self.RP_driver = FakeRedPitaya()
-            self._add_to_log('Red Pitaya unreachable - simulating...')
+        GPI_host = os.getenv('HOST', HOST)
+        GPI_client = koheron.connect(GPI_host, name='GPI_RP')
+        self._add_to_log('Connected to Red Pitaya')
+        self.RP_driver = GPI_RP(GPI_client)
         
         self.last_plot = None
         self.filling = False
