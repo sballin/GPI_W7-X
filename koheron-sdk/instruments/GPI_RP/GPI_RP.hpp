@@ -39,6 +39,10 @@ class GPI_RP {
         ctl.write<reg::led>(led);
     }
 
+    void set_analog_out(uint32_t analog_out) {
+        ctl.write<reg::analog_out>(analog_out);
+    }
+
     void set_GPI_safe_state(uint32_t state) {
         ctl.write<reg::GPI_safe_state>(state);
     }
@@ -99,12 +103,24 @@ class GPI_RP {
         return sts.read<reg::W7X_T1>();
     }
 
+    uint32_t get_analog_out() {
+        return sts.read<reg::analog_out_sts>();
+    }
+
     uint32_t get_abs_gauge() {
         return sts.read<reg::abs_gauge>();
     }
 
     uint32_t get_diff_gauge() {
         return sts.read<reg::diff_gauge>();
+    }
+
+    uint32_t get_analog_input_0() {
+        return sts.read<reg::analog_input_0>();
+    }
+
+    uint32_t get_analog_input_1() {
+        return sts.read<reg::analog_input_1>();
     }
 
     uint32_t get_slow_1_sts() {

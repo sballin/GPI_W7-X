@@ -9,6 +9,12 @@ source $sdk_path/fpga/lib/redp_adc_dac.tcl
 set adc_dac_name adc_dac
 add_redp_adc_dac $adc_dac_name
 
+# Add XADC wizard for analog inputs on E2
+create_bd_cell -type ip -vlnv xilinx.com:ip:xadc_wiz:3.3 xadc_wiz_0
+set_property -dict [list CONFIG.SINGLE_CHANNEL_SELECTION {VAUXP8_VAUXN8} CONFIG.ENABLE_AXI4STREAM {true} CONFIG.DCLK_FREQUENCY {125} CONFIG.ADC_CONVERSION_RATE {1000} CONFIG.XADC_STARUP_SELECTION {channel_sequencer} CONFIG.CHANNEL_ENABLE_VP_VN {false} CONFIG.CHANNEL_ENABLE_VAUXP0_VAUXN0 {true} CONFIG.CHANNEL_ENABLE_VAUXP8_VAUXN8 {true} CONFIG.SEQUENCER_MODE {Continuous} CONFIG.EXTERNAL_MUX_CHANNEL {VP_VN}] [get_bd_cells xadc_wiz_0]
+# Add clock converter for XADC
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_clock_converter:2.1 axi_clock_converter_0
+
 # Rename clocks
 set adc_clk $adc_dac_name/adc_clk
 
@@ -25,6 +31,9 @@ add_ctl_sts $adc_clk $rst_adc_clk_name/peripheral_aresetn
 
 # Connect LEDs
 connect_port_pin led_o [get_slice_pin [ctl_pin led] 7 0]
+
+# Connect analog out with slice
+connect_port_pin dac_pwm_o [get_slice_pin [ctl_pin analog_out] 3 0]
 
 # Connect ADC to status register
 for {set i 0} {$i < [get_parameter n_adc]} {incr i} {
@@ -81,13 +90,12 @@ set_property range  [get_memory_range adc_fifo]  $memory_segment
 create_bd_cell -type ip -vlnv PSFC:user:data_collector:1.0 data_collector_0
 create_bd_cell -type ip -vlnv PSFC:user:trig_delay:1.0 trig_delay_0
 create_bd_cell -type ip -vlnv PSFC:user:outputs:1.0 outputs_0
+create_bd_cell -type ip -vlnv PSFC:user:split:1.0 split_0
 ##################################### Connected all the Blocks ######################################################
-
 
 # Connect ADC pins to pressure gauge status registers
 connect_bd_net [get_bd_pins adc_dac/adc1] [get_bd_pins sts/abs_gauge] -boundary_type upper
 connect_bd_net [get_bd_pins adc_dac/adc2] [get_bd_pins sts/diff_gauge] -boundary_type upper
-
 
 # Add pins from extension connectors
 create_bd_port -dir I W7X_T1
@@ -109,6 +117,28 @@ connect_bd_net [get_bd_pins trig_delay_0/adc_clk] [get_bd_pins adc_dac/adc_clk]
 # Connect input ports
 connect_bd_net [get_bd_ports W7X_permission] [get_bd_pins sts/W7X_permission]
 
+# XADC and clock converter connections (AI0,1,2,3=Vaux8,0,1,9)
+connect_bd_intf_net [get_bd_intf_ports Vaux8] [get_bd_intf_pins xadc_wiz_0/Vaux8]
+connect_bd_intf_net [get_bd_intf_ports Vaux0] [get_bd_intf_pins xadc_wiz_0/Vaux0]
+connect_bd_intf_net [get_bd_intf_ports Vp_Vn] [get_bd_intf_pins xadc_wiz_0/Vp_Vn]
+set_property -dict [list CONFIG.NUM_MI {4}] [get_bd_cells axi_mem_intercon_0]
+connect_bd_intf_net -boundary_type upper [get_bd_intf_pins axi_mem_intercon_0/M03_AXI] [get_bd_intf_pins axi_clock_converter_0/S_AXI]
+connect_bd_intf_net [get_bd_intf_pins axi_clock_converter_0/M_AXI] [get_bd_intf_pins xadc_wiz_0/s_axi_lite]
+connect_bd_net [get_bd_pins axi_clock_converter_0/s_axi_aclk] [get_bd_pins ps_0/FCLK_CLK0]
+connect_bd_net [get_bd_pins axi_clock_converter_0/s_axi_aresetn] [get_bd_pins proc_sys_reset_0/peripheral_aresetn]
+connect_bd_net [get_bd_pins axi_clock_converter_0/m_axi_aclk] [get_bd_pins adc_dac/adc_clk]
+connect_bd_net [get_bd_pins axi_clock_converter_0/m_axi_aresetn] [get_bd_pins proc_sys_reset_adc_clk/peripheral_aresetn]
+connect_bd_net [get_bd_pins xadc_wiz_0/s_axis_aclk] [get_bd_pins adc_dac/adc_clk]
+connect_bd_net [get_bd_pins xadc_wiz_0/s_axi_aclk] [get_bd_pins adc_dac/adc_clk]
+connect_bd_net [get_bd_pins xadc_wiz_0/s_axi_aresetn] [get_bd_pins proc_sys_reset_adc_clk/peripheral_aresetn]
+connect_bd_net [get_bd_pins axi_mem_intercon_0/M03_ACLK] [get_bd_pins ps_0/FCLK_CLK0]
+connect_bd_net [get_bd_pins axi_mem_intercon_0/M03_ARESETN] [get_bd_pins proc_sys_reset_0/peripheral_aresetn]
+connect_bd_net [get_bd_pins xadc_wiz_0/m_axis_tdata] [get_bd_pins split_0/xadc_data]
+connect_bd_net [get_bd_pins xadc_wiz_0/m_axis_tid] [get_bd_pins split_0/xadc_channel]
+connect_bd_net [get_bd_pins adc_dac/adc_clk] [get_bd_pins split_0/clk]
+connect_bd_net [get_bd_pins split_0/analog_input_0] [get_bd_pins sts/analog_input_0]
+connect_bd_net [get_bd_pins split_0/analog_input_1] [get_bd_pins sts/analog_input_1]
+
 # Connect to status block
 connect_bd_net [get_bd_pins ctl/slow_1_manual] [get_bd_pins sts/slow_1_sts] -boundary_type upper
 connect_bd_net [get_bd_pins ctl/slow_2_manual] [get_bd_pins sts/slow_2_sts] -boundary_type upper
@@ -116,6 +146,7 @@ connect_bd_net [get_bd_pins ctl/slow_3_manual] [get_bd_pins sts/slow_3_sts] -bou
 connect_bd_net [get_bd_pins ctl/slow_4_manual] [get_bd_pins sts/slow_4_sts] -boundary_type upper
 connect_bd_net [get_bd_pins ctl/send_T1] [get_bd_pins sts/W7X_T1] -boundary_type upper
 connect_bd_net [get_bd_pins ctl/fast_manual] [get_bd_pins sts/fast_sts] -boundary_type upper
+connect_bd_net [get_bd_pins ctl/analog_out] [get_bd_pins sts/analog_out_sts] -boundary_type upper
 
 # Connect to outputs block
 connect_bd_net [get_bd_pins ctl/slow_1_manual] [get_bd_pins outputs_0/slow_1_manual_ctl]
