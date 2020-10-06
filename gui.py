@@ -22,7 +22,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
-HOST = 'localhost' # hostname of red pitaya being used
+MIDDLE_SERVER_ADDR = 'http://127.0.0.1:50000'
 FAKE_RP = True
 UPDATE_INTERVAL = 1  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
@@ -260,9 +260,14 @@ class GUI:
         
         self._add_to_log('GUI initialized')
         
-        self.RPServer = ServerProxy('http://127.0.0.1:50000', verbose=False, allow_none=True)
-        self._add_to_log('Connected to Red Pitaya')
-        
+        self.RPServer = ServerProxy(MIDDLE_SERVER_ADDR, verbose=False, allow_none=True)
+        try:
+            self.RPServer.serverIsAlive()
+            self._add_to_log('Connected to middle server ' + MIDDLE_SERVER_ADDR)
+        except Exception as e:
+            print('Connect to middle server', MIDDLE_SERVER_ADDR, 'failed:', e)
+            self._add_to_log('Not connected to middle server ' + MIDDLE_SERVER_ADDR)
+            
         self.last_plot = None
         self.filling = False
         self.preparing_to_pump_out = False
@@ -277,8 +282,8 @@ class GUI:
         self.mainloop()
         
     def mainloop(self):
-        self._add_to_log('Setting default state')
-        self._add_to_log('Finished setting default state')
+        # self._add_to_log('Setting default state')
+        # self._add_to_log('Finished setting default state')
         
         last_control = time.time()
         self.last_plot = time.time() + UPDATE_INTERVAL # +... to get more fast data before first average
@@ -516,12 +521,12 @@ class GUI:
         checkbox_status = self.GPI_safe_status.get()
         self.RP_driver.set_GPI_safe_state(checkbox_status)
         
-    def handle_permission(self, puff_number):
+    def handle_permission(self, puffNumber):
         '''
         May be possible to remove this method. Does Red Pitaya even check permission?
         '''
-        permission = getattr(self, 'permission_%d' % puff_number).get()
-        getattr(self.RP_driver, 'set_fast_permission_%d' % puff_number)(permission)
+        permissionGUIValue = getattr(self, 'permission_%d' % puffNumber).get()
+        self.RPServer.handlePermission(puffNumber, permissionGUIValue)
         
     def handle_fill(self):
         self._add_to_log('Beginning fill')

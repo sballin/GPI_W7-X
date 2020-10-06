@@ -102,7 +102,7 @@ class RPServer:
         address = ('127.0.0.1', 50000)
         self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address, allow_none=True)
         self.RPCServer.register_instance(self)
-        # Timeout is how long handle_request() blocks the main thread even when there are no requests
+        # This timeout is how long handle_request() blocks the main thread even when there are no requests
         self.RPCServer.timeout = .001
         
         rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
@@ -204,6 +204,9 @@ class RPServer:
     def store(self):
         pass
         
+    def serverIsAlive(self):
+        return True
+        
     def setManualControl(self, value):
         if value:
             self.state = 'manual control'
@@ -269,6 +272,13 @@ class RPServer:
         data = self.GUIDataQueue.copy()
         self.GUIDataQueue = []
         return data
+        
+        
+    def handlePermission(self, puffNumber, permissionValue):
+        '''
+        May be possible to remove this method. Does Red Pitaya even check permission?
+        '''
+        getattr(self.RPKoheron, 'set_fast_permission_%d' % puffNumber)(permissionValue)
                 
     def handleValve(self, valve_name, command=None):
         if valve_name == 'FV2':
