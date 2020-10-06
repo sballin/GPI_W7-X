@@ -12,6 +12,7 @@ cores:
   - instruments/GPI_RP/cores/data_collector_v1_0
   - instruments/GPI_RP/cores/outputs_v1_0
   - instruments/GPI_RP/cores/trig_delay_v1_0
+  - instruments/GPI_RP/cores/split_v1_0
 
 memory:
   - name: control
@@ -25,6 +26,9 @@ memory:
     range: 32K
   - name: adc_fifo
     offset: '0x43C10000'
+    range: 64K
+  - name: xadc
+    offset: '0x30000000'
     range: 64K
 
 control_registers:
@@ -43,11 +47,14 @@ control_registers:
   - fast_duration_2
   - send_T1
   - reset_time
+  - analog_out
 
 status_registers:
   - adc[n_adc]
   - W7X_T1
   - W7X_permission
+  - analog_input_0
+  - analog_input_1
   - abs_gauge
   - diff_gauge
   - slow_1_sts
@@ -55,6 +62,7 @@ status_registers:
   - slow_3_sts
   - slow_4_sts
   - fast_sts
+  - analog_out_sts
 
 parameters:
   fclk0: 166666667
@@ -71,3 +79,4 @@ xdc:
 drivers:
   - ./GPI_RP.hpp
   - server/drivers/common.hpp
+  - server/drivers/xadc.hpp

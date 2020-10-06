@@ -24,6 +24,11 @@ class GPI_RP(object):
 
 
     @command()
+    def set_analog_out(self, analog_out):
+        pass
+
+
+    @command()
     def get_fifo_length(self):
         return self.client.recv_uint32()
 
@@ -92,21 +97,17 @@ class GPI_RP(object):
     def set_fast_delay_1(self, state):
         pass
         
-        
     @command()
     def set_fast_duration_1(self, state):
         pass
-
 
     @command()
     def set_fast_permission_2(self, state):
         pass
 
-
     @command()
     def set_fast_delay_2(self, state):
         pass
-        
         
     @command()
     def set_fast_duration_2(self, state):
@@ -117,9 +118,13 @@ class GPI_RP(object):
     def send_T1(self, state):
         pass
 
-
     @command()
     def get_W7X_permission(self):
+        return self.client.recv_uint32()
+
+
+    @command()
+    def get_analog_out(self):
         return self.client.recv_uint32()
 
 
@@ -130,6 +135,16 @@ class GPI_RP(object):
 
     @command()
     def get_diff_gauge(self):
+        return self.client.recv_uint32()
+
+
+    @command()
+    def get_analog_input_0(self):
+        return self.client.recv_uint32()
+
+
+    @command()
+    def get_analog_input_1(self):
         return self.client.recv_uint32()
 
 
