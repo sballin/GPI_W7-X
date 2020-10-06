@@ -5,6 +5,7 @@ FUTURE TODO: how to handle long puff delays
 '''
 
 import tkinter as tk
+import tkinter.font
 from tkinter import ttk
 from PIL import Image, ImageTk
 import os
@@ -101,7 +102,7 @@ class GUI:
     def __init__(self, root):
         self.root = root
         self.root.title('GPI Valve Control')
-        win_width = int(1130)
+        win_width = int(1200)
         win_height = int(600)
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
@@ -122,23 +123,26 @@ class GUI:
         background.image = photo
         background.configure(background=gray)
 
-        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='red')
+        font = tkinter.font.Font(size=6)
+        
+        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='red', font=font)
         self.FV2_indicator.bind("<Button-1>", lambda event: self.handle_valve('FV2'))
 
-        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='red')
+        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='red', font=font)
         self.V5_indicator.bind("<Button-1>", lambda event: self.handle_valve('V5'))
 
-        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='red')
+        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='red', font=font)
         self.V4_indicator.bind("<Button-1>", lambda event: self.handle_valve('V4'))
 
-        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='green')
+        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='green', font=font)
         self.V3_indicator.bind("<Button-1>", lambda event: self.handle_valve('V3'))
         
-        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='red')
+        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='red', font=font)
         self.V7_indicator.bind("<Button-1>", lambda event: self.handle_valve('V7'))
 
-        self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#004DD4', fg='white', justify=tk.LEFT)
-        self.diff_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#DF7D00', fg='white', justify=tk.LEFT)
+        gaugeFont = tkinter.font.Font(size=8)
+        self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#004DD4', fg='white', justify=tk.LEFT, font=gaugeFont)
+        self.diff_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#DF7D00', fg='white', justify=tk.LEFT, font=gaugeFont)
 
         controls_frame = tk.Frame(self.root, background=gray)
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
@@ -234,14 +238,12 @@ class GUI:
         self.start_2_entry.grid(row=2, column=8)
         self.duration_2_entry.grid(row=2, column=9)
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
-        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Permission controls frame
         W7X_permission_label.pack(side=tk.LEFT)
         W7X_permission_check.pack(side=tk.LEFT)
         GPI_safe_state_label.pack(side=tk.LEFT)
         GPI_safe_state_check.pack(side=tk.LEFT)
         permission_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
-        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Action controls frame
         GPI_T0_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         action_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
@@ -258,7 +260,7 @@ class GUI:
         
         self._add_to_log('GUI initialized')
         
-        self.RPServer = ServerProxy('http://127.0.0.1:50000', verbose=False)
+        self.RPServer = ServerProxy('http://127.0.0.1:50000', verbose=False, allow_none=True)
         self._add_to_log('Connected to Red Pitaya')
         
         self.last_plot = None
@@ -276,13 +278,7 @@ class GUI:
         
     def mainloop(self):
         self._add_to_log('Setting default state')
-        # self.handle_valve('V3', command='open', no_confirm=True)
-        # self.handle_valve('V4', command='close', no_confirm=True)
-        # self.handle_valve('V5', command='close', no_confirm=True)
-        # self.handle_valve('V7', command='close', no_confirm=True)
-        ## self.handle_valve('FV2', command='close', no_confirm=True)
         self._add_to_log('Finished setting default state')
-        # self.RP_driver.send_T1(0)
         
         last_control = time.time()
         self.last_plot = time.time() + UPDATE_INTERVAL # +... to get more fast data before first average
@@ -561,39 +557,20 @@ class GUI:
         valid_duration_2 = self.duration(2) and 0 < self.duration(2) < 2
         puff_1_happening = self.permission_1.get() and valid_start_1 and valid_duration_1
         puff_2_happening = self.permission_2.get() and valid_start_2 and valid_duration_2
-        if not (puff_1_happening or puff_2_happening):
+        if puff_1_happening or puff_2_happening:
+            self._change_puff_gui_state(tk.DISABLED)
+            #self.bothPuffsDone = max(puff_1_done, puff_2_done)
+            #self.root.after(self.bothPuffsDone, self._change_puff_gui_state, tk.NORMAL)
+            self.RPServer.handleT0({'puff_1_happening': puff_1_happening,
+                                    'puff_1_start': self.start(1),
+                                    'puff_1_duration': self.duration(1),
+                                    'puff_2_happening': puff_2_happening,
+                                    'puff_2_start': self.start(2),
+                                    'puff_2_duration': self.duration(2)})
+            self._change_puff_gui_state(tk.NORMAL)
+        else:
             self._add_to_log('Error: invalid puff entries')
-            return
-            
-        self.T0 = time.time()
-        self._add_to_log('---T0---')
-        self.root.after(int(PRETRIGGER*1000), self._add_to_log, '---T1---')
-        
-        self.done_puff_prep = False
-        
-        puff_1_done = self.start(1) + self.duration(1) if puff_1_happening else 0
-        puff_2_done = self.start(2) + self.duration(2) if puff_2_happening else 0
-        self.both_puffs_done = max(puff_1_done, puff_2_done)
-        self.RP_driver.reset_time(int(self.both_puffs_done*1000)) # reset puff countup timer
-        
-        self._change_puff_gui_state(tk.DISABLED)
 
-        if puff_1_happening:
-            self.RP_driver.set_fast_delay_1(int(self.start(1)*1000))
-            self.RP_driver.set_fast_duration_1(int(self.duration(1)*1000))
-            self.root.after(int((PRETRIGGER+self.start(1))*1000), self._add_to_log, 'Puff 1')
-        else:
-            self.RP_driver.set_fast_delay_1(2+int(self.both_puffs_done*1000))
-            self.RP_driver.set_fast_duration_1(2+int(self.both_puffs_done*1000))
-            
-        if puff_2_happening:
-            self.RP_driver.set_fast_delay_2(int(self.start(2)*1000))
-            self.RP_driver.set_fast_duration_2(int(self.duration(2)*1000))
-            self.root.after(int((PRETRIGGER+self.start(2))*1000), self._add_to_log, 'Puff 2')
-        else:
-            self.RP_driver.set_fast_delay_2(2+int(self.both_puffs_done*1000))
-            self.RP_driver.set_fast_duration_2(2+int(self.both_puffs_done*1000))
-        
     
     def plot_puffs(self):
         try:

@@ -17,6 +17,7 @@ import math
 import datetime
 import logging
 import xmlrpc.server
+from threading import Timer
 import koheron
 import numpy as np
 from GPI_RP.GPI_RP import GPI_RP
@@ -99,7 +100,7 @@ class RPServer:
     def __init__(self):
         # Create new xmlrpc server and register RPServer with it to expose RPServer functions
         address = ('127.0.0.1', 50000)
-        self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address)
+        self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address, allow_none=True)
         self.RPCServer.register_instance(self)
         # Timeout is how long handle_request() blocks the main thread even when there are no requests
         self.RPCServer.timeout = .001
@@ -112,6 +113,7 @@ class RPServer:
         self.handleValve('V4', command='close')
         self.handleValve('V5', command='close')
         self.handleValve('V7', command='close')
+        self.RPKoheron.send_T1(0)
         self._addToLog('Finished setting default state')
         
         # Queues emptied every time the GUI asks for more data to display
@@ -124,6 +126,7 @@ class RPServer:
         self.state = 'idle' # filling, venting before pump out, pumping out, shot/puffing, manual control
         self.T0 = None
         self.sentT1toRP = False
+        self.firstPuffStart = None
         self.donePuffPrep = False
         self.bothPuffsDone = None
         self.targetPressure = None
@@ -166,20 +169,18 @@ class RPServer:
                 self.RPCServer.handle_request()
             
             # Stuff to do before and after puffs
-            # if self.T0:
-            #     first_puff_start = 0 if self.start(1) == 0 or self.start(2) == 0 else \
-            #                        min(self.start(1) or math.inf, self.start(2) or math.inf)
-            #     if now > self.T0 + PRETRIGGER - 1 + first_puff_start and not self.donePuffPrep:
-            #         self.handleValve('V3', command='close')
-            #         self.donePuffPrep = True
-            #     if now > self.T0 + PRETRIGGER and not self.sentT1toRP:
-            #         self.RPKoheron.send_T1(1)
-            #         self.RPKoheron.send_T1(0)
-            #         self.sentT1toRP = True
-            #     if now > self.T0 + PRETRIGGER + self.bothPuffsDone + 2:
-            #         self.handleValve('V3', command='open')
-            #         self.T0 = None
-            #         self.sentT1toRP = False
+            if self.T0:
+                if now > self.T0 + PRETRIGGER - 1 + self.firstPuffStart and not self.donePuffPrep:
+                    self.handleValve('V3', command='close')
+                    self.donePuffPrep = True
+                if now > self.T0 + PRETRIGGER and not self.sentT1toRP:
+                    self.RPKoheron.send_T1(1)
+                    self.RPKoheron.send_T1(0)
+                    self.sentT1toRP = True
+                if now > self.T0 + PRETRIGGER + self.bothPuffsDone + 2:
+                    self.handleValve('V3', command='open')
+                    self.T0 = None
+                    self.sentT1toRP = False
                     
             # if now - self.lastPrune > UPDATE_INTERVAL:
             #     # Remove fast readings older than PLOT_TIME_RANGE seconds
@@ -285,9 +286,11 @@ class RPServer:
             current_status = int(not current_status) if valve_name == 'V3' else current_status
             command = 'open' if current_status == 0 else 'close'
         if command == 'open':
-            signal, action_text, fill = 1, 'OPENING', 'green'
+            signal = 1
+            action_text = 'OPENING'
         elif command == 'close':
-            signal, action_text, fill = 0, 'CLOSING', 'red'
+            signal = 0
+            action_text = 'CLOSING'
         self._addToLog(action_text + ' ' + valve_name)
             
         # V3 expects opposite signals
@@ -305,43 +308,47 @@ class RPServer:
         '''
         getattr(self.RPKoheron, 'set_fast_permission_%d' % puff_number)(int(value))
         
-    def handleT0(self):
-        valid_start_1 = self.start(1) is not None and self.start(1) >= 0
-        valid_start_2 = self.start(2) is not None and self.start(2) >= 0
-        valid_duration_1 = self.duration(1) and 0 < self.duration(1) < 2
-        valid_duration_2 = self.duration(2) and 0 < self.duration(2) < 2
-        puff_1_happening = self.permission_1.get() and valid_start_1 and valid_duration_1
-        puff_2_happening = self.permission_2.get() and valid_start_2 and valid_duration_2
-        if not (puff_1_happening or puff_2_happening):
-            self._addToLog('Error: invalid puff entries')
-            return
-            
+    def handleT0(self, p):
         self.T0 = time.time()
         self._addToLog('---T0---')
-        self.root.after(int(PRETRIGGER*1000), self._addToLog, '---T1---')
+        Timer(PRETRIGGER, self._addToLog, args=['---T1---']).start()
         
+        # Set variables used in main loop
         self.donePuffPrep = False
+        if p['puff_1_start'] == 0 or p['puff_2_start'] == 0:
+            self.firstPuffStart = 0
+        else: 
+            self.firstPuffStart = min(p['puff_1_start'] or math.inf, p['puff_2_start'] or math.inf)
         
-        puff_1_done = self.start(1) + self.duration(1) if puff_1_happening else 0
-        puff_2_done = self.start(2) + self.duration(2) if puff_2_happening else 0
+        # Calculate when both puffs will be done, for main loop actions and FPGA reset
+        if p['puff_1_happening']:
+            puff_1_done = p['puff_1_start'] + p['puff_1_duration']
+        else:
+            puff_1_done = 0
+        if p['puff_2_happening']:
+            puff_2_done = p['puff_2_start'] + p['puff_2_duration']
+        else:
+            puff_2_done = 0
         self.bothPuffsDone = max(puff_1_done, puff_2_done)
         self.RPKoheron.reset_time(int(self.bothPuffsDone*1000)) # reset puff countup timer
         
-        if puff_1_happening:
-            self.RPKoheron.set_fast_delay_1(int(self.start(1)*1000))
-            self.RPKoheron.set_fast_duration_1(int(self.duration(1)*1000))
-            self.root.after(int((PRETRIGGER+self.start(1))*1000), self._addToLog, 'Puff 1')
+        # Send fast puff timing info to FPGA 
+        if p['puff_1_happening']:
+            self.RPKoheron.set_fast_delay_1(int(p['puff_1_start']*1000))
+            self.RPKoheron.set_fast_duration_1(int(p['puff_1_duration']*1000))
+            Timer(PRETRIGGER+p['puff_1_start'], self._addToLog, args=['Puff 1 should happen now']).start()
         else:
             self.RPKoheron.set_fast_delay_1(2+int(self.bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_1(2+int(self.bothPuffsDone*1000))
-            
-        if puff_2_happening:
-            self.RPKoheron.set_fast_delay_2(int(self.start(2)*1000))
-            self.RPKoheron.set_fast_duration_2(int(self.duration(2)*1000))
-            self.root.after(int((PRETRIGGER+self.start(2))*1000), self._addToLog, 'Puff 2')
+        if p['puff_2_happening']:
+            self.RPKoheron.set_fast_delay_2(int(p['puff_2_start']*1000))
+            self.RPKoheron.set_fast_duration_2(int(p['puff_2_duration']*1000))
+            Timer(PRETRIGGER+p['puff_2_start'], self._addToLog, args=['Puff 2 should happen now']).start()
         else:
             self.RPKoheron.set_fast_delay_2(2+int(self.bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_2(2+int(self.bothPuffsDone*1000))
+        
+        return 0
 
 
 if __name__ == '__main__':
