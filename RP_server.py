@@ -98,7 +98,7 @@ def find_nearest(array, value):
 class RPServer:
     def __init__(self):
         # Create new xmlrpc server and register RPServer with it to expose RPServer functions
-        address = ('localhost', 50000)
+        address = ('127.0.0.1', 50000)
         self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address)
         self.RPCServer.register_instance(self)
         # Timeout is how long handle_request() blocks the main thread even when there are no requests
@@ -160,12 +160,10 @@ class RPServer:
                 last_control =  now
                 
                 # Get data on slower timescale now that it's queue-based
-                self._getKoheronData()
+                # self._getKoheronData()
                 
                 # Execute remote commands if any have been received
-                start = time.time()
                 self.RPCServer.handle_request()
-                self._addToLog('Requests took %f' % (time.time()-start))
             
             # Stuff to do before and after puffs
             # if self.T0:
@@ -257,7 +255,7 @@ class RPServer:
         self.diffPressures.extend(diffPressures)
         delta = 0.0001
         self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
-        self.GUIDataQueue.extend(zip(self.pressureTimes.tolist(), absPressures, diffPressures))
+        self.GUIDataQueue.extend(list(zip(self.pressureTimes.tolist(), absPressures, diffPressures)))
         if len(combined_pressure_history) == 50000:
             # Show this message except during program startup, 
             # when there is always a backlog of data

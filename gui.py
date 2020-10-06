@@ -11,8 +11,7 @@ import os
 import time
 import math
 import datetime
-import koheron 
-from GPI_RP.GPI_RP import GPI_RP
+from xmlrpc.client import ServerProxy
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.misc import derivative
@@ -259,10 +258,8 @@ class GUI:
         
         self._add_to_log('GUI initialized')
         
-        GPI_host = os.getenv('HOST', HOST)
-        GPI_client = koheron.connect(GPI_host, name='GPI_RP')
+        self.RPServer = ServerProxy('http://127.0.0.1:50000', verbose=False)
         self._add_to_log('Connected to Red Pitaya')
-        self.RP_driver = GPI_RP(GPI_client)
         
         self.last_plot = None
         self.filling = False
@@ -275,19 +272,17 @@ class GUI:
         self.both_puffs_done = None
         self.starting_up = True
         
-        #self.RP_driver.set_GPI_safe_state(0)
-        
         self.mainloop()
         
     def mainloop(self):
         self._add_to_log('Setting default state')
-        self.handle_valve('V3', command='open', no_confirm=True)
-        self.handle_valve('V4', command='close', no_confirm=True)
-        self.handle_valve('V5', command='close', no_confirm=True)
-        self.handle_valve('V7', command='close', no_confirm=True)
-        # self.handle_valve('FV2', command='close', no_confirm=True)
+        # self.handle_valve('V3', command='open', no_confirm=True)
+        # self.handle_valve('V4', command='close', no_confirm=True)
+        # self.handle_valve('V5', command='close', no_confirm=True)
+        # self.handle_valve('V7', command='close', no_confirm=True)
+        ## self.handle_valve('FV2', command='close', no_confirm=True)
         self._add_to_log('Finished setting default state')
-        self.RP_driver.send_T1(0)
+        # self.RP_driver.send_T1(0)
         
         last_control = time.time()
         self.last_plot = time.time() + UPDATE_INTERVAL # +... to get more fast data before first average
@@ -320,7 +315,7 @@ class GUI:
                 last_control =  now
                 
                 # Get data on slower timescale now that it's queue-based
-                self.get_data()
+                # self.get_data()
             
             # Stuff to do before and after puffs
             if self.T0:
@@ -415,38 +410,36 @@ class GUI:
         
     def get_data(self):
         # Add fast readings
-        combined_pressure_history = self.RP_driver.get_GPI_data()
-        now = time.time()
-        abs_pressures = [abs_torr(i) for i in combined_pressure_history]
-        diff_pressures = [diff_torr(i) for i in combined_pressure_history]
+        data = self.RPServer.getPressureData()
+        pressure_times, abs_pressures, diff_pressures = list(zip(*data))
         self.abs_pressures.extend(abs_pressures)
         self.diff_pressures.extend(diff_pressures)
-        self.pressure_times = np.arange(now-0.0001*(len(self.abs_pressures)-1), now, 0.0001)
-        if len(combined_pressure_history) == 50000:
-            # Show this message except during program startup, 
-            # when there is always a backlog of data
-            if not self.starting_up:
-                self._add_to_log('Lost some data due to network lag')
-            else:
-                self.starting_up = False
+        self.pressure_times = np.array(pressure_times)
+        # if len(combined_pressure_history) == 50000:
+        #     # Show this message except during program startup, 
+        #     # when there is always a backlog of data
+        #     if not self.starting_up:
+        #         self._add_to_log('Lost some data due to network lag')
+        #     else:
+        #         self.starting_up = False
         
         now = time.time()
         if now - self.last_plot > UPDATE_INTERVAL:
+            start = find_nearest(np.array(self.pressure_times), self.pressure_times[-1]-UPDATE_INTERVAL)
             # Add latest average reading
-            interval_start = find_nearest(np.array(self.pressure_times)-now, -UPDATE_INTERVAL)
-            self.pressure_avg_times.append(np.mean(self.pressure_times[interval_start:]))
-            self.abs_avg_pressures.append(np.mean(self.abs_pressures[interval_start:]))
-            self.diff_avg_pressures.append(np.mean(self.diff_pressures[interval_start:]))
+            self.pressure_avg_times.append(np.mean(self.pressure_times[start:]))
+            self.abs_avg_pressures.append(np.mean(self.abs_pressures[start:]))
+            self.diff_avg_pressures.append(np.mean(self.diff_pressures[start:]))
             
             # Remove fast readings older than PLOT_TIME_RANGE seconds
             if not self.T0: # in case the puff delays are longer than PLOT_TIME_RANGE
-                range_start = find_nearest(np.array(self.pressure_times)-now, -PLOT_TIME_RANGE)
+                range_start = find_nearest(np.array(self.pressure_times), self.pressure_times[-1]-PLOT_TIME_RANGE)
                 self.pressure_times = self.pressure_times[range_start:]
                 self.abs_pressures = self.abs_pressures[range_start:]
                 self.diff_pressures = self.diff_pressures[range_start:]
             
             # Remove average readings older than PLOT_TIME_RANGE seconds
-            avgs_start = find_nearest(np.array(self.pressure_avg_times)-now, -PLOT_TIME_RANGE)
+            avgs_start = find_nearest(np.array(self.pressure_avg_times), self.pressure_avg_times[-1]-PLOT_TIME_RANGE)
             self.pressure_avg_times = self.pressure_avg_times[avgs_start:]
             self.abs_avg_pressures = self.abs_avg_pressures[avgs_start:]
             self.diff_avg_pressures = self.diff_avg_pressures[avgs_start:]
@@ -466,7 +459,7 @@ class GUI:
         # Absolute gauge plot setup
         self.ax_abs.yaxis.tick_right()
         self.ax_abs.yaxis.set_label_position('right')
-        self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2)
+        self.ax_abs.plot(relative_times, self.abs_avg_pressures, c='C0', linewidth=2, marker='o')
         self.ax_abs.set_ylabel('Torr')
         plt.setp(self.ax_abs.get_xticklabels(), visible=False)
         self.ax_abs.grid(True, color='#c9dae5')
@@ -475,7 +468,7 @@ class GUI:
         # Differential gauge plot setup
         self.ax_diff.yaxis.tick_right()
         self.ax_diff.yaxis.set_label_position('right')
-        self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2)
+        self.ax_diff.plot(relative_times, self.diff_avg_pressures, c='C1', linewidth=2, marker='o')
         self.ax_diff.set_ylabel('Torr')
         self.ax_diff.set_xlabel('Seconds')
         self.ax_diff.grid(True, color='#e5d5c7')
