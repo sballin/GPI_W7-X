@@ -2,22 +2,19 @@
 Server for valve control and data acquisition in GPI system at W7-X.
 
 TODO:
-[ ] Data management
+[ ] Data management (incl. analog input)
 [ ] Pumping/filling routines
 [ ] Puffing routines and permission
 [ ] Manual control
-[ ] Callbacks (.after commands in gui_reuse)
+[x] Callbacks (.after commands in gui_reuse)
 [ ] Logging
 [ ] Safe state
+[ ] Log/print all exceptions
 '''
 
-import os
 import time
-import math
 import datetime
-import logging
 import xmlrpc.server
-from threading import Timer
 import koheron
 import numpy as np
 from GPI_RP.GPI_RP import GPI_RP
@@ -25,7 +22,7 @@ from GPI_RP.GPI_RP import GPI_RP
 
 RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
 FAKE_RP = True
-CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
+CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
@@ -98,6 +95,28 @@ def find_nearest(array, value):
 
 class RPServer:
     def __init__(self):
+        self.state = 'idle' # filling, venting before pump out, pumping out, shot, manual control
+        self.T0 = None
+        self.sentT1toRP = False
+        self.firstPuffStart = None
+        self.donePuffPrep = False
+        self.bothPuffsDone = None
+        self.targetPressure = None
+        self.pumpoutRefill = False
+        self.startingUp = True
+        
+        # Queues emptied every time the GUI asks for more data to display
+        self.GUIDataQueue = []
+        # Queue of (time to execute, function, args) objects like threading.Timer does. We want to 
+        # avoid threading for Koheron interactions because of potential bugs
+        self.taskQueue = []
+        # Queue of strings to send to GUI for logging
+        self.messageQueue = []
+        # Used for pump/fill logic and shot data
+        self.pressureTimes = []
+        self.absPressures = []
+        self.diffPressures = []
+        
         # Create new xmlrpc server and register RPServer with it to expose RPServer functions
         address = ('127.0.0.1', 50000)
         self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address, allow_none=True)
@@ -108,33 +127,8 @@ class RPServer:
         rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
         self.RPKoheron = GPI_RP(rpConnection)
         
-        self._addToLog('Setting default state')
-        self.handleValve('V3', command='open')
-        self.handleValve('V4', command='close')
-        self.handleValve('V5', command='close')
-        self.handleValve('V7', command='close')
-        self.RPKoheron.send_T1(0)
-        self._addToLog('Finished setting default state')
-        
-        # Queues emptied every time the GUI asks for more data to display
-        self.GUIDataQueue = []
-        # Queue of (time to execute, function, args) objects like threading.Timer does. We want to 
-        # avoid threading for Koheron interactions because of potential bugs
-        self.taskQueue = []
-        # Used for pump/fill logic and shot data
-        self.pressureTimes = []
-        self.absPressures = []
-        self.diffPressures = []
-        
-        self.state = 'idle' # filling, venting before pump out, pumping out, shot, manual control
-        self.T0 = None
-        self.sentT1toRP = False
-        self.firstPuffStart = None
-        self.donePuffPrep = False
-        self.bothPuffsDone = None
-        self.targetPressure = None
-        self.pumpoutRefill = False
-        self.startingUp = True
+        self._addToLog('Server setting default state')
+        self.setDefault()
         
         self._mainloop()
         
@@ -212,6 +206,16 @@ class RPServer:
     def init(self):
         pass
         
+    def setDefault(self):
+        self.handleValve('V3', command='open')
+        self.handleValve('V4', command='close')
+        self.handleValve('V5', command='close')
+        self.handleValve('V7', command='close')
+        self.handleValve('FV2', command='close')
+        self.setShutter('close')
+        self.RPKoheron.send_T1(0)
+        self._addToLog('Finished setting default state')
+        
     def disarm(self):
         pass
     
@@ -270,7 +274,9 @@ class RPServer:
         
     def _addToLog(self, text):
         time_string = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-        print(time_string + ' ' + text)
+        message = time_string + ' ' + text
+        self.messageQueue.append(message)
+        print(message)
         
     def _getKoheronData(self):
         # Add fast readings
@@ -315,28 +321,69 @@ class RPServer:
             self.setShutter('close')
         else:
             self._addToLog('Shutter register has bad value')
+            
+    def getData(self):
+        # Copy and flush message queue
+        messageQueue = self.messageQueue
+        self.messageQueue = []
+        
+        return {'shutter_setting': self.getShutterSetting(),
+                'shutter_sensor': self.getShutterSensor(),
+                'V3': self.getValveStatus('V3'),
+                'V4': self.getValveStatus('V4'),
+                'V5': self.getValveStatus('V5'),
+                'V7': self.getValveStatus('V7'),
+                'FV2': self.getValveStatus('FV2'),
+                'messages': messageQueue}
+            
+    def getShutterSetting(self):
+        return self.RPKoheron.get_analog_out()
+            
+    def getShutterSensor(self):
+        ai0 = self.RPKoheron.get_analog_input_0()
+        ai1 = self.RPKoheron.get_analog_input_1()
+        if ai0 < 9000 < ai1:
+            return 'closed'
+        elif ai0 > 9000 > ai1:
+            return 'open'
+        else:
+            return 'bad'
         
     def handlePermission(self, puffNumber, permissionValue):
         '''
         This method may be unnecessary. Does FPGA even check permission?
         '''
         getattr(self.RPKoheron, 'set_fast_permission_%d' % puffNumber)(permissionValue)
+        
+    def getValveStatus(self, valveName):
+        if valveName == 'FV2':
+            statusInt = self.RPKoheron.get_fast_sts()
+        else:
+            valve_number = ['V5', 'V4', 'V3', 'V7'].index(valveName) + 1
+            statusInt = getattr(self.RPKoheron, 'get_slow_%s_sts' % valve_number)()
+        # V3 has opposite status logic 
+        if valveName == 'V3':
+            statusInt = int(not statusInt)
+        if statusInt == 1:
+            status = 'open'
+        else:
+            status = 'close'
+        return status
                 
     def handleValve(self, valve_name, command=None):
         if valve_name == 'FV2':
-            getter_method = 'get_fast_sts'
             setter_method = 'set_fast'
         else:
             valve_number = ['V5', 'V4', 'V3', 'V7'].index(valve_name) + 1
-            getter_method = 'get_slow_%s_sts' % valve_number
             setter_method = 'set_slow_%s' % valve_number
             
         # If command arg is not supplied, set to toggle state of valve
         if not command:
-            current_status = getattr(self.RPKoheron, getter_method)()
-            # V3 has opposite status logic 
-            current_status = int(not current_status) if valve_name == 'V3' else current_status
-            command = 'open' if current_status == 0 else 'close'
+            current_status = self.getValveStatus(valve_name)
+            if current_status == 'close':
+                command = 'open'
+            else:
+                command = 'close'
         if command == 'open':
             signal = 1
             action_text = 'OPENING'

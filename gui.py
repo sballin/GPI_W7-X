@@ -1,16 +1,12 @@
 '''
 GUI for valve control in GPI system at W7-X. Original code by Kevin Tang.
-
-FUTURE TODO: how to handle long puff delays
 '''
 
 import tkinter as tk
 import tkinter.font
 from tkinter import ttk
 from PIL import Image, ImageTk
-import os
 import time
-import math
 import datetime
 from xmlrpc.client import ServerProxy
 import numpy as np
@@ -127,20 +123,24 @@ class GUI:
 
         font = tkinter.font.Font(size=6)
         
-        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='red', font=font)
-        self.FV2_indicator.bind("<Button-1>", lambda event: self.handle_valve('FV2'))
-
-        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='red', font=font)
-        self.V5_indicator.bind("<Button-1>", lambda event: self.handle_valve('V5'))
-
-        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='red', font=font)
-        self.V4_indicator.bind("<Button-1>", lambda event: self.handle_valve('V4'))
-
-        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='green', font=font)
-        self.V3_indicator.bind("<Button-1>", lambda event: self.handle_valve('V3'))
+        self.shutter_setting_indicator = tk.Label(system_frame, width=5, height=1, text='Shutter setting', fg='white', bg='black', font=font)
+        self.shutter_setting_indicator.bind("<Button-1>", lambda event: self.RPServer.handleToggleShutter())
+        self.shutter_sensor_indicator = tk.Label(system_frame, width=5, height=1, text='Shutter sensor', fg='white', bg='black', font=font)
         
-        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='red', font=font)
-        self.V7_indicator.bind("<Button-1>", lambda event: self.handle_valve('V7'))
+        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font)
+        self.FV2_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('FV2'))
+
+        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font)
+        self.V5_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V5'))
+
+        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font)
+        self.V4_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V4'))
+
+        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font)
+        self.V3_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V3'))
+        
+        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font)
+        self.V7_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V7'))
 
         gaugeFont = tkinter.font.Font(size=8)
         self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#004DD4', fg='white', justify=tk.LEFT, font=gaugeFont)
@@ -168,15 +168,6 @@ class GUI:
         self.start_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry.insert(0, str(DEFAULT_PUFF))
-        
-        shutter_controls_frame = tk.Frame(controls_frame, background=gray)
-        shutter_controls_line1 = tk.Frame(shutter_controls_frame, background=gray)
-        shutter_open_label = tk.Label(shutter_controls_line1, text='Shutter open (s rel. T1):', background=gray)
-        self.shutter_open_entry = ttk.Entry(shutter_controls_line1, width=10, background=gray)
-        shutter_auto_button = ttk.Button(shutter_controls_line1, text='Auto', command=self.handle_shutter_auto)
-        shutter_controls_line2 = tk.Frame(shutter_controls_frame, background=gray)
-        shutter_close_label = tk.Label(shutter_controls_line2, text='Shutter close (s rel. T1):', background=gray)
-        self.shutter_close_entry = ttk.Entry(shutter_controls_line2, width=10, background=gray)
         
         permission_controls_frame = tk.Frame(controls_frame, background=gray)
         W7X_permission_label = tk.Label(permission_controls_frame, text='W7-X permission', background=gray)
@@ -220,6 +211,8 @@ class GUI:
         self.V5_indicator.place(relx=.364, rely=.315, relwidth=.047, relheight=.026)
         self.V7_indicator.place(relx=.204, rely=.277, relwidth=.03, relheight=.028)
         self.FV2_indicator.place(relx=.635, rely=.067, relwidth=.05, relheight=.026)
+        self.shutter_setting_indicator.place(relx=.817, rely=.062, relwidth=.15, relheight=.026)
+        self.shutter_sensor_indicator.place(relx=.817, rely=.092, relwidth=.15, relheight=.026)
         self.abs_gauge_label.place(relx=.883, rely=.545)
         self.diff_gauge_label.place(relx=.605, rely=.761)
         system_frame.pack(side=tk.LEFT)
@@ -249,15 +242,6 @@ class GUI:
         self.start_2_entry.grid(row=2, column=8)
         self.duration_2_entry.grid(row=2, column=9)
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
-        ### Shutter controls frame
-        # shutter_open_label.pack(side=tk.LEFT)
-        # self.shutter_open_entry.pack(side=tk.LEFT)
-        # shutter_auto_button.pack(side=tk.LEFT, padx=5)
-        # shutter_close_label.pack(side=tk.LEFT)
-        # self.shutter_close_entry.pack(side=tk.LEFT)
-        # shutter_controls_line1.pack(side=tk.TOP, fill=tk.X)
-        # shutter_controls_line2.pack(side=tk.TOP, fill=tk.X)
-        # shutter_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ### Permission controls frame
         W7X_permission_label.pack(side=tk.LEFT)
         W7X_permission_check.pack(side=tk.LEFT)
@@ -299,6 +283,9 @@ class GUI:
         self.both_puffs_done = None
         self.starting_up = True
         
+        self._add_to_log('GUI setting default state')
+        self.RPServer.setDefault()
+        
         self.mainloop()
         
     def mainloop(self):
@@ -313,48 +300,32 @@ class GUI:
             
             # Pump and fill loop logic
             if now - last_control > CONTROL_INTERVAL:
-                if self.preparing_to_pump_out:
-                    if self.abs_avg_pressures[-1] < MECH_PUMP_LIMIT:
-                        self._add_to_log('Completed prep for pump out')
-                        self.handle_valve('V7', command='close')
-                        self.preparing_to_pump_out = False
-                        self.handle_pump_refill(skip_prep=True)
-                if self.pumping_out:
-                    done_pumping = all([p < PUMPED_OUT for p in self.abs_avg_pressures[-5:]])
-                    if done_pumping:
-                        self.handle_valve('V4', command='close')
-                        self.pumping_out = False
-                        self._add_to_log('Completed pump out. Beginning fill.')
-                        self.handle_valve('V5', command='open')
-                        self.filling = True
-                if self.filling:
-                    desired_pressure = float(self.desired_pressure_entry.get())
-                    if self.abs_pressures[-1] > desired_pressure - FILL_MARGIN:
-                        self.handle_valve('V5', command='close')
-                        self.filling = False
-                        self._add_to_log('Completed fill to %.2f Torr' % desired_pressure)
+                # if self.preparing_to_pump_out:
+                #     if self.abs_avg_pressures[-1] < MECH_PUMP_LIMIT:
+                #         self._add_to_log('Completed prep for pump out')
+                #         self.handle_valve('V7', command='close')
+                #         self.preparing_to_pump_out = False
+                #         self.handle_pump_refill(skip_prep=True)
+                # if self.pumping_out:
+                #     done_pumping = all([p < PUMPED_OUT for p in self.abs_avg_pressures[-5:]])
+                #     if done_pumping:
+                #         self.handle_valve('V4', command='close')
+                #         self.pumping_out = False
+                #         self._add_to_log('Completed pump out. Beginning fill.')
+                #         self.handle_valve('V5', command='open')
+                #         self.filling = True
+                # if self.filling:
+                #     desired_pressure = float(self.desired_pressure_entry.get())
+                #     if self.abs_pressures[-1] > desired_pressure - FILL_MARGIN:
+                #         self.handle_valve('V5', command='close')
+                #         self.filling = False
+                #         self._add_to_log('Completed fill to %.2f Torr' % desired_pressure)
                 last_control =  now
                 
                 # Get data on slower timescale now that it's queue-based
                 # self.get_data()
-            
-            # # Stuff to do before and after puffs
-            # if self.T0:
-            #     first_puff_start = 0 if self.start(1) == 0 or self.start(2) == 0 else \
-            #                        min(self.start(1) or math.inf, self.start(2) or math.inf)
-            #     if now > self.T0 + PRETRIGGER - 1 + first_puff_start and not self.done_puff_prep:
-            #         self.handle_valve('V3', command='close')
-            #         self.done_puff_prep = True
-            #     if now > self.T0 + PRETRIGGER and not self.sent_T1_to_RP:
-            #         self.RP_driver.send_T1(1)
-            #         self.RP_driver.send_T1(0)
-            #         self.sent_T1_to_RP = True
-            #     if now > self.T0 + PRETRIGGER + self.both_puffs_done + 2:
-            #         self.handle_valve('V3', command='open')
-            #         self._change_puff_gui_state(tk.NORMAL)
-            #         self.plot_puffs()
-            #         self.T0 = None
-            #         self.sent_T1_to_RP = False
+                
+            self.getDataUpdateUI()
              
             # Draw GUI and get callback results ((...).after(...))
             self.root.update()
@@ -404,7 +375,50 @@ class GUI:
                     self.start_2_entry, self.duration_2_entry]
         for e in elements:
             e.config(state=state)
+            
+    def getDataUpdateUI(self):
+        try:
+            data = self.RPServer.getData()
+        except Exception as e:
+            print(e)
+            self.shutter_sensor_indicator.config(bg='black')
+            self.shutter_setting_indicator.config(bg='black')
+            self.V3_indicator.config(bg='black')
+            self.V4_indicator.config(bg='black')
+            self.V5_indicator.config(bg='black')
+            self.V7_indicator.config(bg='black')
+            self.FV2_indicator.config(bg='black')
+            return
         
+        shutterSetting = data['shutter_setting']
+        if shutterSetting == 1:
+            self.shutter_setting_indicator.config(bg='green')
+        elif shutterSetting == 0:
+            self.shutter_setting_indicator.config(bg='red3')
+        else:
+            self.shutter_setting_indicator.config(bg='black')
+            
+        sensorStatus = data['shutter_sensor']
+        if sensorStatus == 'open':
+            self.shutter_sensor_indicator.config(bg='green')
+        elif sensorStatus == 'closed':
+            self.shutter_sensor_indicator.config(bg='red3')
+        else:
+            self.shutter_sensor_indicator.config(bg='black')
+            
+        for valve in ['V3', 'V4', 'V5', 'V7', 'FV2']:
+            if data[valve] == 'open':
+                fill = 'green'
+            elif data[valve] == 'close':
+                fill = 'red3'
+            else:
+                fill = 'black'
+                print(data[valve])
+            getattr(self, valve+'_indicator').config(bg=fill)
+        
+        for message in data['messages']:
+            self._add_to_log(message)
+            
     def start(self, puff_number):
         try:
             text = getattr(self, 'start_%d_entry' % puff_number).get()
@@ -519,7 +533,7 @@ class GUI:
         if command == 'open':
             signal, action_text, fill = 1, 'OPENING', 'green'
         elif command == 'close':
-            signal, action_text, fill = 0, 'CLOSING', 'red'
+            signal, action_text, fill = 0, 'CLOSING', 'red3'
         self._add_to_log(action_text + ' ' + valve_name)
             
         # V3 expects opposite signals
@@ -590,9 +604,6 @@ class GUI:
                 self._add_to_log('Error: invalid puff entries')
                 return
         if puff_1_happening or puff_2_happening:
-            self._change_puff_gui_state(tk.DISABLED)
-            #self.bothPuffsDone = max(puff_1_done, puff_2_done)
-            #self.root.after(self.bothPuffsDone, self._change_puff_gui_state, tk.NORMAL)
             self.RPServer.handleT0({'puff_1_happening': puff_1_happening,
                                     'puff_1_start': self.start(1),
                                     'puff_1_duration': self.duration(1),
@@ -600,10 +611,8 @@ class GUI:
                                     'puff_2_start': self.start(2),
                                     'puff_2_duration': self.duration(2),
                                     'shutter_change_duration': SHUTTER_CHANGE})
-            self._change_puff_gui_state(tk.NORMAL)
         else:
             self._add_to_log('Error: invalid puff entries')
-
     
     def plot_puffs(self):
         try:
