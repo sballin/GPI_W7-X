@@ -28,6 +28,8 @@ UPDATE_INTERVAL = 1  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
+MAX_PUFF_DURATION = 2 # seconds
+SHUTTER_CHANGE = 1 # seconds for the shutter to finish opening/closing
 PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
@@ -167,6 +169,15 @@ class GUI:
         self.duration_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry.insert(0, str(DEFAULT_PUFF))
         
+        shutter_controls_frame = tk.Frame(controls_frame, background=gray)
+        shutter_controls_line1 = tk.Frame(shutter_controls_frame, background=gray)
+        shutter_open_label = tk.Label(shutter_controls_line1, text='Shutter open (s rel. T1):', background=gray)
+        self.shutter_open_entry = ttk.Entry(shutter_controls_line1, width=10, background=gray)
+        shutter_auto_button = ttk.Button(shutter_controls_line1, text='Auto', command=self.handle_shutter_auto)
+        shutter_controls_line2 = tk.Frame(shutter_controls_frame, background=gray)
+        shutter_close_label = tk.Label(shutter_controls_line2, text='Shutter close (s rel. T1):', background=gray)
+        self.shutter_close_entry = ttk.Entry(shutter_controls_line2, width=10, background=gray)
+        
         permission_controls_frame = tk.Frame(controls_frame, background=gray)
         W7X_permission_label = tk.Label(permission_controls_frame, text='W7-X permission', background=gray)
         W7X_permission_check = tk.Checkbutton(permission_controls_frame, background=gray, state=tk.DISABLED)
@@ -238,6 +249,15 @@ class GUI:
         self.start_2_entry.grid(row=2, column=8)
         self.duration_2_entry.grid(row=2, column=9)
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
+        ### Shutter controls frame
+        # shutter_open_label.pack(side=tk.LEFT)
+        # self.shutter_open_entry.pack(side=tk.LEFT)
+        # shutter_auto_button.pack(side=tk.LEFT, padx=5)
+        # shutter_close_label.pack(side=tk.LEFT)
+        # self.shutter_close_entry.pack(side=tk.LEFT)
+        # shutter_controls_line1.pack(side=tk.TOP, fill=tk.X)
+        # shutter_controls_line2.pack(side=tk.TOP, fill=tk.X)
+        # shutter_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ### Permission controls frame
         W7X_permission_label.pack(side=tk.LEFT)
         W7X_permission_check.pack(side=tk.LEFT)
@@ -318,23 +338,23 @@ class GUI:
                 # Get data on slower timescale now that it's queue-based
                 # self.get_data()
             
-            # Stuff to do before and after puffs
-            if self.T0:
-                first_puff_start = 0 if self.start(1) == 0 or self.start(2) == 0 else \
-                                   min(self.start(1) or math.inf, self.start(2) or math.inf)
-                if now > self.T0 + PRETRIGGER - 1 + first_puff_start and not self.done_puff_prep:
-                    self.handle_valve('V3', command='close')
-                    self.done_puff_prep = True
-                if now > self.T0 + PRETRIGGER and not self.sent_T1_to_RP:
-                    self.RP_driver.send_T1(1)
-                    self.RP_driver.send_T1(0)
-                    self.sent_T1_to_RP = True
-                if now > self.T0 + PRETRIGGER + self.both_puffs_done + 2:
-                    self.handle_valve('V3', command='open')
-                    self._change_puff_gui_state(tk.NORMAL)
-                    self.plot_puffs()
-                    self.T0 = None
-                    self.sent_T1_to_RP = False
+            # # Stuff to do before and after puffs
+            # if self.T0:
+            #     first_puff_start = 0 if self.start(1) == 0 or self.start(2) == 0 else \
+            #                        min(self.start(1) or math.inf, self.start(2) or math.inf)
+            #     if now > self.T0 + PRETRIGGER - 1 + first_puff_start and not self.done_puff_prep:
+            #         self.handle_valve('V3', command='close')
+            #         self.done_puff_prep = True
+            #     if now > self.T0 + PRETRIGGER and not self.sent_T1_to_RP:
+            #         self.RP_driver.send_T1(1)
+            #         self.RP_driver.send_T1(0)
+            #         self.sent_T1_to_RP = True
+            #     if now > self.T0 + PRETRIGGER + self.both_puffs_done + 2:
+            #         self.handle_valve('V3', command='open')
+            #         self._change_puff_gui_state(tk.NORMAL)
+            #         self.plot_puffs()
+            #         self.T0 = None
+            #         self.sent_T1_to_RP = False
              
             # Draw GUI and get callback results ((...).after(...))
             self.root.update()
@@ -517,6 +537,9 @@ class GUI:
         else:
             self._confirm_window('Please confirm the %s of %s.' % (action_text, valve_name), action)
                         
+    def handle_shutter_auto(self):
+        pass
+                        
     def handle_safe_state(self):
         checkbox_status = self.GPI_safe_status.get()
         self.RP_driver.set_GPI_safe_state(checkbox_status)
@@ -558,10 +581,14 @@ class GUI:
     def handle_T0(self):
         valid_start_1 = self.start(1) is not None and self.start(1) >= 0
         valid_start_2 = self.start(2) is not None and self.start(2) >= 0
-        valid_duration_1 = self.duration(1) and 0 < self.duration(1) < 2
-        valid_duration_2 = self.duration(2) and 0 < self.duration(2) < 2
+        valid_duration_1 = self.duration(1) and 0 < self.duration(1) < MAX_PUFF_DURATION
+        valid_duration_2 = self.duration(2) and 0 < self.duration(2) < MAX_PUFF_DURATION
         puff_1_happening = self.permission_1.get() and valid_start_1 and valid_duration_1
         puff_2_happening = self.permission_2.get() and valid_start_2 and valid_duration_2
+        if puff_1_happening and puff_2_happening:
+            if not self.start(1) + self.duration(1) < self.start(2):
+                self._add_to_log('Error: invalid puff entries')
+                return
         if puff_1_happening or puff_2_happening:
             self._change_puff_gui_state(tk.DISABLED)
             #self.bothPuffsDone = max(puff_1_done, puff_2_done)
@@ -571,7 +598,8 @@ class GUI:
                                     'puff_1_duration': self.duration(1),
                                     'puff_2_happening': puff_2_happening,
                                     'puff_2_start': self.start(2),
-                                    'puff_2_duration': self.duration(2)})
+                                    'puff_2_duration': self.duration(2),
+                                    'shutter_change_duration': SHUTTER_CHANGE})
             self._change_puff_gui_state(tk.NORMAL)
         else:
             self._add_to_log('Error: invalid puff entries')

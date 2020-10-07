@@ -123,7 +123,7 @@ class RPServer:
         self.absPressures = []
         self.diffPressures = []
         
-        self.state = 'idle' # filling, venting before pump out, pumping out, shot/puffing, manual control
+        self.state = 'idle' # filling, venting before pump out, pumping out, shot, manual control
         self.T0 = None
         self.sentT1toRP = False
         self.firstPuffStart = None
@@ -170,6 +170,7 @@ class RPServer:
             
             # Stuff to do before and after puffs
             if self.T0:
+                self.state = 'shot'
                 if now > self.T0 + PRETRIGGER - 1 + self.firstPuffStart and not self.donePuffPrep:
                     self.handleValve('V3', command='close')
                     self.donePuffPrep = True
@@ -180,6 +181,7 @@ class RPServer:
                 if now > self.T0 + PRETRIGGER + self.bothPuffsDone + 2:
                     self.handleValve('V3', command='open')
                     self.T0 = None
+                    self.state = 'idle'
                     self.sentT1toRP = False
                     
             # if now - self.lastPrune > UPDATE_INTERVAL:
@@ -273,10 +275,26 @@ class RPServer:
         self.GUIDataQueue = []
         return data
         
+    def setShutter(self, state):
+        if state == 'open':
+            value = 1
+        elif state == 'closed':
+            value = 0
+        self._addToLog('Set shutter ' + state)
+        self.RPKoheron.set_analog_out(value)
+        
+    def handleToggleShutter(self):
+        currentSetting = self.RPKoheron.get_analog_out()
+        if currentSetting == 0:
+            self.setShutter('open')
+        elif currentSetting == 1:
+            self.setShutter('close')
+        else:
+            self._addToLog('Shutter register has bad value')
         
     def handlePermission(self, puffNumber, permissionValue):
         '''
-        May be possible to remove this method. Does Red Pitaya even check permission?
+        This method may be unnecessary. Does FPGA even check permission?
         '''
         getattr(self.RPKoheron, 'set_fast_permission_%d' % puffNumber)(permissionValue)
                 
@@ -325,14 +343,12 @@ class RPServer:
         
         # Set variables used in main loop
         self.donePuffPrep = False
-        if p['puff_1_start'] == 0 or p['puff_2_start'] == 0:
-            self.firstPuffStart = 0
-        else: 
-            self.firstPuffStart = min(p['puff_1_start'] or math.inf, p['puff_2_start'] or math.inf)
+        self.firstPuffStart = p['puff_1_start']
         
         # Calculate when both puffs will be done, for main loop actions and FPGA reset
         if p['puff_1_happening']:
             puff_1_done = p['puff_1_start'] + p['puff_1_duration']
+            Timer(PRETRIGGER+p['puff_1_start']-p['shutter_change_duration'], self.setShutter, args=['open']).start()
         else:
             puff_1_done = 0
         if p['puff_2_happening']:
@@ -341,6 +357,13 @@ class RPServer:
             puff_2_done = 0
         self.bothPuffsDone = max(puff_1_done, puff_2_done)
         self.RPKoheron.reset_time(int(self.bothPuffsDone*1000)) # reset puff countup timer
+        # Close shutter after both puffs are done
+        Timer(PRETRIGGER+self.bothPuffsDone+1, self.setShutter, args=['close']).start()
+        # Close shutter in between puffs if they're far apart
+        if p['puff_1_happening'] and p['puff_2_happening']:
+            if p['puff_2_start'] - puff_1_done > 2*p['shutter_change_duration'] + 3:
+                Timer(PRETRIGGER+puff_1_done+1, self.setShutter, args=['close']).start()
+                Timer(PRETRIGGER+p['puff_2_start']-p['shutter_change_duration'], self.setShutter, args=['open']).start()
         
         # Send fast puff timing info to FPGA 
         if p['puff_1_happening']:

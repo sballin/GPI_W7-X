@@ -25,6 +25,10 @@ class GPI_RP(object):
 
     @command()
     def set_analog_out(self, analog_out):
+        '''
+        Controls the 4 analog output pins on E2. AO0 is controlled by 0b0000/0b0001, AO1 with 
+        0b0000/0b0010, etc.
+        '''
         pass
 
 
