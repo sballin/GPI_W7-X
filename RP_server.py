@@ -185,25 +185,13 @@ class RPServer:
                     self.sentT1toRP = False
                     
             # Do any required tasks in task queue
-            # remainingTasks = []
-            now = time.time()
+            remainingTasks = []
             for execTime, function, args in self.taskQueue:
-                if execTime < now:
+                if execTime < time.time():
                     function(*args)
-                    self.taskQueue.remove((execTime, function, args))
-                # else:
-                    # remainingTasks.append((execTime, function, args))
-            # self.taskQueue = remainingTasks
-                    
-            # if now - self.lastPrune > UPDATE_INTERVAL:
-            #     # Remove fast readings older than PLOT_TIME_RANGE seconds
-            #     if not self.T0: # in case the puff delays are longer than PLOT_TIME_RANGE
-            #         range_start = find_nearest(np.array(self.pressureTimes)-now, -PLOT_TIME_RANGE)
-            #         self.pressureTimes = self.pressureTimes[range_start:]
-            #         self.absPressures = self.absPressures[range_start:]
-            #         self.diffPressures = self.diffPressures[range_start:]
-             
-            # IMPORTANT: get callback results ((...).after(...))
+                else:
+                    remainingTasks.append((execTime, function, args))
+            self.taskQueue = remainingTasks
             
     def init(self):
         pass
