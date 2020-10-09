@@ -309,7 +309,7 @@ class GUI:
         try:
             data = self.RPServer.getData()
         except Exception as e:
-            print(e)
+            print('GUI.getDataUpdateUI', e)
             self.shutter_sensor_indicator.config(bg='black')
             self.shutter_setting_indicator.config(bg='black')
             self.V3_indicator.config(bg='black')
@@ -358,7 +358,7 @@ class GUI:
             text = getattr(self, 'start_%d_entry' % puff_number).get()
             return float(text)
         except Exception as e:
-            print(e)
+            print('GUI.start', e)
             return None
         
     def duration(self, puff_number):
@@ -366,7 +366,7 @@ class GUI:
             text = getattr(self, 'duration_%d_entry' % puff_number).get()
             return float(text)
         except Exception as e:
-            print(e)
+            print('GUI.duration', e)
             return None
             
     def draw_plots(self):

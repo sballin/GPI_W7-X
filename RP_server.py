@@ -395,7 +395,11 @@ class RPServer:
         
     def postShotActions(self):
         self.handleValve('V3', command='open')
-        self.state = 'idle'
+        self.setState('idle')
+        
+    def setState(self, state):
+        self.state = state
+        self._addToLog('Setting middle server state = ' + state)
         
     def handleT0(self, p):
         valid_start_1 = p['puff_1_start'] and p['puff_1_start'] >= 0
@@ -404,15 +408,17 @@ class RPServer:
         valid_duration_2 = p['puff_2_duration'] and 0 < p['puff_2_duration'] < MAX_PUFF_DURATION
         puff_1_happening = p['puff_1_permission'] and valid_start_1 and valid_duration_1
         puff_2_happening = p['puff_2_permission'] and valid_start_2 and valid_duration_2
+        # Puff 1 should always be used
+        if not puff_1_happening:
+            self._addToLog('Error: puff 1 must be used')
+            return
+        # Puff 1 should never bleed into puff 2
         if puff_1_happening and puff_2_happening:
             if not p['puff_1_start'] + p['puff_1_duration'] < p['puff_2_start']:
-                self._addToLog('Error: invalid puff entries')
+                self._addToLog('Error: puff 1 would bleed into puff 2')
                 return
-        elif not (puff_1_happening or puff_2_happening):
-            self._addToLog('Error: invalid puff entries')
-            return
         
-        self.state = 'shot'
+        self.setState('shot')
         self._addToLog('---T0---')
         self.addTask(PRETRIGGER, self._addToLog, args=['---T1---'])
         self.addTask(PRETRIGGER - 1 + p['puff_1_start'], self.handleValve, ['V3', 'close'])
