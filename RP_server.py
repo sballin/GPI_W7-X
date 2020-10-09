@@ -98,11 +98,6 @@ def find_nearest(array, value):
 class RPServer:
     def __init__(self):
         self.state = 'idle' # filling, venting before pump out, pumping out, shot, manual control
-        self.T0 = None
-        self.sentT1toRP = False
-        self.firstPuffStart = None
-        self.donePuffPrep = False
-        self.bothPuffsDone = None
         self.targetPressure = None
         self.pumpoutRefill = False
         self.gotFirstQueue = False
@@ -166,23 +161,6 @@ class RPServer:
                 
                 # Execute remote commands if any have been received
                 self.RPCServer.handle_request()
-            
-            # Stuff to do before and after puffs
-            if self.T0:
-                self.state = 'shot'
-                now = time.time()
-                if now > self.T0 + PRETRIGGER - 1 + self.firstPuffStart and not self.donePuffPrep:
-                    self.handleValve('V3', command='close')
-                    self.donePuffPrep = True
-                if now > self.T0 + PRETRIGGER and not self.sentT1toRP:
-                    self.RPKoheron.send_T1(1)
-                    self.RPKoheron.send_T1(0)
-                    self.sentT1toRP = True
-                if now > self.T0 + PRETRIGGER + self.bothPuffsDone + 2:
-                    self.handleValve('V3', command='open')
-                    self.T0 = None
-                    self.state = 'idle'
-                    self.sentT1toRP = False
                     
             # Do any required tasks in task queue
             remainingTasks = []
@@ -410,17 +388,22 @@ class RPServer:
         '''
         getattr(self.RPKoheron, 'set_fast_permission_%d' % puff_number)(int(value))
         
+    def sendT1toRP(self):
+        self.RPKoheron.send_T1(1)
+        self.RPKoheron.send_T1(0)
+        
+    def postShotActions(self):
+        self.handleValve('V3', command='open')
+        self.state = 'idle'
+        
     def handleT0(self, p):
-        self.T0 = time.time()
         self._addToLog('---T0---')
         self.addTask(PRETRIGGER, self._addToLog, args=['---T1---'])
+        self.addTask(PRETRIGGER - 1 + p['puff_1_start'], self.handleValve, ['V3', 'close'])
+        self.addTask(PRETRIGGER, self.sendT1toRP, [])
         
-        # Set variables used in main loop
-        self.donePuffPrep = False
-        self.firstPuffStart = p['puff_1_start']
-        
-        # Calculate when both puffs will be done, for main loop actions and FPGA reset
-        if p['puff_1_happening']:
+        # Calculate when both puffs will be done to queue post-shot actions
+        if p['puff_1_happening']: # never False
             puff_1_done = p['puff_1_start'] + p['puff_1_duration']
             self.addTask(PRETRIGGER+p['puff_1_start']-p['shutter_change_duration'], self.setShutter, ['open'])
         else:
@@ -429,31 +412,33 @@ class RPServer:
             puff_2_done = p['puff_2_start'] + p['puff_2_duration']
         else:
             puff_2_done = 0
-        self.bothPuffsDone = max(puff_1_done, puff_2_done)
-        self.RPKoheron.reset_time(int(self.bothPuffsDone*1000)) # reset puff countup timer
+        bothPuffsDone = max(puff_1_done, puff_2_done)
         # Close shutter after both puffs are done
-        self.addTask(PRETRIGGER+self.bothPuffsDone+1, self.setShutter, ['close'])
+        self.addTask(PRETRIGGER+bothPuffsDone+1, self.setShutter, ['close'])
         # Close shutter in between puffs if they're far apart
         if p['puff_1_happening'] and p['puff_2_happening']:
             if p['puff_2_start'] - puff_1_done > 2*p['shutter_change_duration'] + 3:
                 self.addTask(PRETRIGGER+puff_1_done+1, self.setShutter, ['close'])
                 self.addTask(PRETRIGGER+p['puff_2_start']-p['shutter_change_duration'], self.setShutter, ['open'])
+        # Open V3 and set state 'idle' after both puffs are done
+        self.addTask(PRETRIGGER + bothPuffsDone + 2, self.postShotActions, [])
+        self.RPKoheron.reset_time(int(bothPuffsDone*1000)) # reset puff countup timer
         
         # Send fast puff timing info to FPGA 
-        if p['puff_1_happening']:
+        if p['puff_1_happening']: # never False
             self.RPKoheron.set_fast_delay_1(int(p['puff_1_start']*1000))
             self.RPKoheron.set_fast_duration_1(int(p['puff_1_duration']*1000))
             self.addTask(PRETRIGGER+p['puff_1_start'], self._addToLog, ['Puff 1 should happen now'])
         else:
-            self.RPKoheron.set_fast_delay_1(2+int(self.bothPuffsDone*1000))
-            self.RPKoheron.set_fast_duration_1(2+int(self.bothPuffsDone*1000))
+            self.RPKoheron.set_fast_delay_1(2+int(bothPuffsDone*1000))
+            self.RPKoheron.set_fast_duration_1(2+int(bothPuffsDone*1000))
         if p['puff_2_happening']:
             self.RPKoheron.set_fast_delay_2(int(p['puff_2_start']*1000))
             self.RPKoheron.set_fast_duration_2(int(p['puff_2_duration']*1000))
             self.addTask(PRETRIGGER+p['puff_2_start'], self._addToLog, ['Puff 2 should happen now'])
         else:
-            self.RPKoheron.set_fast_delay_2(2+int(self.bothPuffsDone*1000))
-            self.RPKoheron.set_fast_duration_2(2+int(self.bothPuffsDone*1000))
+            self.RPKoheron.set_fast_delay_2(2+int(bothPuffsDone*1000))
+            self.RPKoheron.set_fast_duration_2(2+int(bothPuffsDone*1000))
         
         return 0
 
