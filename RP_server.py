@@ -10,6 +10,7 @@ TODO:
 [ ] Logging
 [ ] Safe state
 [ ] Log/print all exceptions
+[ ] 100 ms timeout for network commands esp shutter
 '''
 
 import time
@@ -17,11 +18,11 @@ import datetime
 import xmlrpc.server
 import koheron
 import numpy as np
+from bottleneck import move_mean
 from GPI_RP.GPI_RP import GPI_RP
 
 
 RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
-FAKE_RP = True
 CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 PRETRIGGER = 10 # seconds between T0 and T1
@@ -29,6 +30,7 @@ FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
 PLENUM_VOLUME = 0.802 # L 
+READING_HISTORY = 30 # seconds of pressure readings to keep in memory
 
 
 def int_to_float(reading):
@@ -103,10 +105,10 @@ class RPServer:
         self.bothPuffsDone = None
         self.targetPressure = None
         self.pumpoutRefill = False
-        self.startingUp = True
+        self.gotFirstQueue = False
         
         # Queues emptied every time the GUI asks for more data to display
-        self.GUIDataQueue = []
+        self.GUIData = []
         # Queue of (time to execute, function, args) objects like threading.Timer does. We want to 
         # avoid threading for Koheron interactions because of potential bugs
         self.taskQueue = []
@@ -160,7 +162,7 @@ class RPServer:
                 last_control =  now
                 
                 # Get data on slower timescale now that it's queue-based
-                # self._getKoheronData()
+                self._getKoheronData()
                 
                 # Execute remote commands if any have been received
                 self.RPCServer.handle_request()
@@ -288,14 +290,26 @@ class RPServer:
         self.diffPressures.extend(diffPressures)
         delta = 0.0001
         self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
-        self.GUIDataQueue.extend(list(zip(self.pressureTimes.tolist(), absPressures, diffPressures)))
+        
+        # Remove fast readings older than READING_HISTORY seconds, except during a shot cycle
+        if self.state != 'shot': 
+            range_start = find_nearest(np.array(self.pressureTimes)-now, -READING_HISTORY)
+            self.pressureTimes = self.pressureTimes[range_start:]
+            self.absPressures = self.absPressures[range_start:]
+            self.diffPressures = self.diffPressures[range_start:]
+            
+        # Calculate moving mean of 1000 samples (0.1 s) to send to GUI
+        self.GUIData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
+                                move_mean(self.absPressures, 1000)[::1000].tolist(),
+                                move_mean(self.diffPressures, 1000)[::1000].tolist()))
+        
         if len(combined_pressure_history) == 50000:
-            # Show this message except during program startup, 
-            # when there is always a backlog of data
-            if not self.startingUp:
+            # Show this message except during program startup, when the FPGA queue is normally full
+            if self.gotFirstQueue:
                 self._addToLog('Lost some data due to network lag')
             else:
-                self.startingUp = False
+                self.gotFirstQueue = True
+
                 
     def getPressureData(self):
         data = self.GUIDataQueue.copy()
@@ -334,6 +348,7 @@ class RPServer:
                 'V5': self.getValveStatus('V5'),
                 'V7': self.getValveStatus('V7'),
                 'FV2': self.getValveStatus('FV2'),
+                'pressures_history': self.GUIData,
                 'messages': messageQueue}
             
     def getShutterSetting(self):
@@ -411,7 +426,6 @@ class RPServer:
         self.T0 = time.time()
         self._addToLog('---T0---')
         self.addTask(PRETRIGGER, self._addToLog, args=['---T1---'])
-        # Timer(PRETRIGGER, self._addToLog, args=['---T1---']).start()
         
         # Set variables used in main loop
         self.donePuffPrep = False
@@ -421,7 +435,6 @@ class RPServer:
         if p['puff_1_happening']:
             puff_1_done = p['puff_1_start'] + p['puff_1_duration']
             self.addTask(PRETRIGGER+p['puff_1_start']-p['shutter_change_duration'], self.setShutter, ['open'])
-            # Timer(PRETRIGGER+p['puff_1_start']-p['shutter_change_duration'], self.setShutter, args=['open']).start()
         else:
             puff_1_done = 0
         if p['puff_2_happening']:
@@ -432,21 +445,17 @@ class RPServer:
         self.RPKoheron.reset_time(int(self.bothPuffsDone*1000)) # reset puff countup timer
         # Close shutter after both puffs are done
         self.addTask(PRETRIGGER+self.bothPuffsDone+1, self.setShutter, ['close'])
-        # Timer(PRETRIGGER+self.bothPuffsDone+1, self.setShutter, args=['close']).start()
         # Close shutter in between puffs if they're far apart
         if p['puff_1_happening'] and p['puff_2_happening']:
             if p['puff_2_start'] - puff_1_done > 2*p['shutter_change_duration'] + 3:
                 self.addTask(PRETRIGGER+puff_1_done+1, self.setShutter, ['close'])
-                # Timer(PRETRIGGER+puff_1_done+1, self.setShutter, args=['close']).start()
                 self.addTask(PRETRIGGER+p['puff_2_start']-p['shutter_change_duration'], self.setShutter, ['open'])
-                # Timer(PRETRIGGER+p['puff_2_start']-p['shutter_change_duration'], self.setShutter, args=['open']).start()
         
         # Send fast puff timing info to FPGA 
         if p['puff_1_happening']:
             self.RPKoheron.set_fast_delay_1(int(p['puff_1_start']*1000))
             self.RPKoheron.set_fast_duration_1(int(p['puff_1_duration']*1000))
             self.addTask(PRETRIGGER+p['puff_1_start'], self._addToLog, ['Puff 1 should happen now'])
-            # Timer(PRETRIGGER+p['puff_1_start'], self._addToLog, args=['Puff 1 should happen now']).start()
         else:
             self.RPKoheron.set_fast_delay_1(2+int(self.bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_1(2+int(self.bothPuffsDone*1000))
@@ -454,7 +463,6 @@ class RPServer:
             self.RPKoheron.set_fast_delay_2(int(p['puff_2_start']*1000))
             self.RPKoheron.set_fast_duration_2(int(p['puff_2_duration']*1000))
             self.addTask(PRETRIGGER+p['puff_2_start'], self._addToLog, ['Puff 2 should happen now'])
-            # Timer(PRETRIGGER+p['puff_2_start'], self._addToLog, args=['Puff 2 should happen now']).start()
         else:
             self.RPKoheron.set_fast_delay_2(2+int(self.bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_2(2+int(self.bothPuffsDone*1000))
