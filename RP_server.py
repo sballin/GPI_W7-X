@@ -31,6 +31,7 @@ MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
 PLENUM_VOLUME = 0.802 # L 
 READING_HISTORY = 30 # seconds of pressure readings to keep in memory
+MAX_PUFF_DURATION = 2 # seconds max for FV2 to remain open for an individual puff
 
 
 def int_to_float(reading):
@@ -397,18 +398,33 @@ class RPServer:
         self.state = 'idle'
         
     def handleT0(self, p):
+        valid_start_1 = p['puff_1_start'] and p['puff_1_start'] >= 0
+        valid_start_2 = p['puff_2_start'] and p['puff_2_start'] >= 0
+        valid_duration_1 = p['puff_1_duration'] and 0 < p['puff_1_duration'] < MAX_PUFF_DURATION
+        valid_duration_2 = p['puff_2_duration'] and 0 < p['puff_2_duration'] < MAX_PUFF_DURATION
+        puff_1_happening = p['puff_1_permission'] and valid_start_1 and valid_duration_1
+        puff_2_happening = p['puff_2_permission'] and valid_start_2 and valid_duration_2
+        if puff_1_happening and puff_2_happening:
+            if not p['puff_1_start'] + p['puff_1_duration'] < p['puff_2_start']:
+                self._addToLog('Error: invalid puff entries')
+                return
+        elif not (puff_1_happening or puff_2_happening):
+            self._addToLog('Error: invalid puff entries')
+            return
+        
+        self.state = 'shot'
         self._addToLog('---T0---')
         self.addTask(PRETRIGGER, self._addToLog, args=['---T1---'])
         self.addTask(PRETRIGGER - 1 + p['puff_1_start'], self.handleValve, ['V3', 'close'])
         self.addTask(PRETRIGGER, self.sendT1toRP, [])
         
         # Calculate when both puffs will be done to queue post-shot actions
-        if p['puff_1_happening']: # never False
+        if puff_1_happening: # never False
             puff_1_done = p['puff_1_start'] + p['puff_1_duration']
             self.addTask(PRETRIGGER+p['puff_1_start']-p['shutter_change_duration'], self.setShutter, ['open'])
         else:
             puff_1_done = 0
-        if p['puff_2_happening']:
+        if puff_2_happening:
             puff_2_done = p['puff_2_start'] + p['puff_2_duration']
         else:
             puff_2_done = 0
@@ -416,7 +432,7 @@ class RPServer:
         # Close shutter after both puffs are done
         self.addTask(PRETRIGGER+bothPuffsDone+1, self.setShutter, ['close'])
         # Close shutter in between puffs if they're far apart
-        if p['puff_1_happening'] and p['puff_2_happening']:
+        if puff_1_happening and puff_2_happening:
             if p['puff_2_start'] - puff_1_done > 2*p['shutter_change_duration'] + 3:
                 self.addTask(PRETRIGGER+puff_1_done+1, self.setShutter, ['close'])
                 self.addTask(PRETRIGGER+p['puff_2_start']-p['shutter_change_duration'], self.setShutter, ['open'])
@@ -425,22 +441,20 @@ class RPServer:
         self.RPKoheron.reset_time(int(bothPuffsDone*1000)) # reset puff countup timer
         
         # Send fast puff timing info to FPGA 
-        if p['puff_1_happening']: # never False
+        if puff_1_happening: # never False
             self.RPKoheron.set_fast_delay_1(int(p['puff_1_start']*1000))
             self.RPKoheron.set_fast_duration_1(int(p['puff_1_duration']*1000))
             self.addTask(PRETRIGGER+p['puff_1_start'], self._addToLog, ['Puff 1 should happen now'])
         else:
             self.RPKoheron.set_fast_delay_1(2+int(bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_1(2+int(bothPuffsDone*1000))
-        if p['puff_2_happening']:
+        if puff_2_happening:
             self.RPKoheron.set_fast_delay_2(int(p['puff_2_start']*1000))
             self.RPKoheron.set_fast_duration_2(int(p['puff_2_duration']*1000))
             self.addTask(PRETRIGGER+p['puff_2_start'], self._addToLog, ['Puff 2 should happen now'])
         else:
             self.RPKoheron.set_fast_delay_2(2+int(bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_2(2+int(bothPuffsDone*1000))
-        
-        return 0
 
 
 if __name__ == '__main__':

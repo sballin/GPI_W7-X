@@ -24,7 +24,6 @@ UPDATE_INTERVAL = .5  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
-MAX_PUFF_DURATION = 2 # seconds
 SHUTTER_CHANGE = 1 # seconds for the shutter to finish opening/closing
 PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
@@ -430,26 +429,13 @@ class GUI:
         pass
         
     def handle_T0(self):
-        valid_start_1 = self.start(1) is not None and self.start(1) >= 0
-        valid_start_2 = self.start(2) is not None and self.start(2) >= 0
-        valid_duration_1 = self.duration(1) and 0 < self.duration(1) < MAX_PUFF_DURATION
-        valid_duration_2 = self.duration(2) and 0 < self.duration(2) < MAX_PUFF_DURATION
-        puff_1_happening = self.permission_1.get() and valid_start_1 and valid_duration_1
-        puff_2_happening = self.permission_2.get() and valid_start_2 and valid_duration_2
-        if puff_1_happening and puff_2_happening:
-            if not self.start(1) + self.duration(1) < self.start(2):
-                self._add_to_log('Error: invalid puff entries')
-                return
-        if puff_1_happening or puff_2_happening:
-            self.RPServer.handleT0({'puff_1_happening': puff_1_happening,
-                                    'puff_1_start': self.start(1),
-                                    'puff_1_duration': self.duration(1),
-                                    'puff_2_happening': puff_2_happening,
-                                    'puff_2_start': self.start(2),
-                                    'puff_2_duration': self.duration(2),
-                                    'shutter_change_duration': SHUTTER_CHANGE})
-        else:
-            self._add_to_log('Error: invalid puff entries')
+        self.RPServer.handleT0({'puff_1_permission': self.permission_1.get(),
+                                'puff_1_start': self.start(1),
+                                'puff_1_duration': self.duration(1),
+                                'puff_2_permission': self.permission_2.get(),
+                                'puff_2_start': self.start(2),
+                                'puff_2_duration': self.duration(2),
+                                'shutter_change_duration': SHUTTER_CHANGE})
     
     def plot_puffs(self):
         try:
