@@ -242,15 +242,16 @@ class GUI:
         log_controls_frame.pack(side=tk.TOP, fill=tk.BOTH, pady=10, expand=True)
         controls_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
         
-    def connectToServer(self):
+    def connectToServer(self, hideFailureMessage=False):
         self.middle = ServerProxy(MIDDLE_SERVER_ADDR, verbose=False, allow_none=True)
         try:
             self.middle.serverIsAlive()
             self.middleServerConnected = True
             self._add_to_log('Connected to middle server ' + MIDDLE_SERVER_ADDR)
         except Exception as e:
-            print('Connect to middle server', MIDDLE_SERVER_ADDR, 'failed:', e)
-            self._add_to_log('Not connected to middle server ' + MIDDLE_SERVER_ADDR)
+            if not hideFailureMessage:
+                print('Connect to middle server', MIDDLE_SERVER_ADDR, 'failed:', e)
+                self._add_to_log('Not connected to middle server ' + MIDDLE_SERVER_ADDR)
         
     def mainloop(self):
         # self._add_to_log('Setting default state')
@@ -274,9 +275,8 @@ class GUI:
             # Draw GUI and get callback results ((...).after(...))
             self.root.update()
             
-            # Reduce CPU usage during non-crucial times
-            # if not (self.preparing_to_pump_out or self.pumping_out or self.filling or self.T0):
-                # time.sleep(.01)
+            # Reduce CPU usage
+            time.sleep(.005)
                              
     def _quit_tkinter(self):
         self.mainloop_running = False # ends our custom while loop
@@ -323,11 +323,14 @@ class GUI:
     def getDataUpdateUI(self):
         try:
             data = self.middle.getDataForGUI()
-            self.middleServerConnected = True
+            if not self.middleServerConnected:
+                self._add_to_log('Reconnected to middle server')
+                self.middleServerConnected = True
         except Exception as e:
             if self.middleServerConnected:
                 self.middleServerConnected = False
                 print('GUI.getDataUpdateUI', e)
+                self._add_to_log('Middle server disconnected')
                 self.shutter_sensor_indicator.config(bg='black')
                 self.shutter_setting_indicator.config(bg='black')
                 self.V3_indicator.config(bg='black')
