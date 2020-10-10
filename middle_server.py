@@ -289,13 +289,14 @@ class RPServer:
         
     def setShutter(self, state):
         if state == 'open':
+            self._addToLog('OPENING shutter')
             value = 1
         elif state == 'close':
+            self._addToLog('CLOSING shutter')
             value = 0
         else:
             self._addToLog('Bad shutter command')
             return
-        self._addToLog('Telling shutter to ' + state)
         self.RPKoheron.set_analog_out(value)
         
     def handleToggleShutter(self):

@@ -137,13 +137,28 @@ class GUI:
         self.diffPressures = []
         
         self.fig = Figure(figsize=(3.5, 6), dpi=100, facecolor=gray)
-        self.fig.subplots_adjust(left=0.2)
+        self.fig.subplots_adjust(left=0.2, right=0.75, top=0.95, hspace=0.35)
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
+        self.ax_abs.yaxis.tick_right()
+        self.ax_abs.yaxis.set_label_position('right')
+        self.ax_abs.set_ylabel('Torr')
+        self.ax_abs.set_xlabel('Seconds')
+        self.ax_abs.set_title('Absolute gauge')
+        self.ax_abs.grid(True, color='#c9dae5')
+        self.ax_abs.patch.set_facecolor('#e3eff7')
+        self.line_abs, = self.ax_abs.plot([], [], c='C0', linewidth=2)
         # Differential pressure plot matplotlib setup
         self.ax_diff = self.fig.add_subplot(212)
+        self.ax_diff.yaxis.tick_right()
+        self.ax_diff.yaxis.set_label_position('right')
+        self.ax_diff.set_ylabel('Torr')
+        self.ax_diff.set_xlabel('Seconds')
+        self.ax_diff.set_title('Differential gauge')
+        self.ax_diff.grid(True, color='#e5d5c7')
+        self.ax_diff.patch.set_facecolor('#f7ebe1')
+        self.line_diff, = self.ax_diff.plot([], [], c='C1', linewidth=2)
         # Plot tkinter setup
-        self.fig.set_tight_layout(True)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
         
@@ -352,6 +367,9 @@ class GUI:
         if time.time() - self.last_plot > UPDATE_INTERVAL:
             self.draw_plots()
             self.last_plot = time.time()
+            # Update pressure labels in diagram
+            self.abs_gauge_label['text'] = '%.3g\nTorr' % self.absPressures[-1]
+            self.diff_gauge_label['text'] = '%.3g\nTorr' % self.diffPressures[-1]
             
     def start(self, puff_number):
         try:
@@ -368,40 +386,26 @@ class GUI:
         except Exception as e:
             print('GUI.duration', e)
             return None
-            
+    
     def draw_plots(self):
         # Do not attempt to draw plots if no data has been collected
         now = time.time()
         relative_times = [t - now for t in self.pressureTimes]
         if not relative_times:
             return
-        self.ax_diff.cla()
-        self.ax_abs.cla()
         
-        # Absolute gauge plot setup
-        self.ax_abs.yaxis.tick_right()
-        self.ax_abs.yaxis.set_label_position('right')
-        self.ax_abs.plot(relative_times, self.absPressures, c='C0', linewidth=2)
-        self.ax_abs.set_ylabel('Torr')
-        plt.setp(self.ax_abs.get_xticklabels(), visible=False)
-        self.ax_abs.grid(True, color='#c9dae5')
-        self.ax_abs.patch.set_facecolor('#e3eff7')
+        # Update absolute gauge plot
+        self.line_abs.set_data(relative_times, self.absPressures)
+        self.ax_abs.relim()
+        self.ax_abs.autoscale_view(True,True,True)
         
-        # Differential gauge plot setup
-        self.ax_diff.yaxis.tick_right()
-        self.ax_diff.yaxis.set_label_position('right')
-        self.ax_diff.plot(relative_times, self.diffPressures, c='C1', linewidth=2)
-        self.ax_diff.set_ylabel('Torr')
-        self.ax_diff.set_xlabel('Seconds')
-        self.ax_diff.grid(True, color='#e5d5c7')
-        self.ax_diff.patch.set_facecolor('#f7ebe1')
-        
-        # Update labels
-        self.abs_gauge_label['text'] = '%.2g\nTorr' % self.absPressures[-1]
-        self.diff_gauge_label['text'] = '%.2g\nTorr' % self.diffPressures[-1]
+        # Update differential gauge plot
+        self.line_diff.set_data(relative_times, self.diffPressures)
+        self.ax_diff.relim()
+        self.ax_diff.autoscale_view(True,True,True)
         
         self.fig.canvas.draw_idle()
-                        
+
     def handle_safe_state(self):
         pass
         
