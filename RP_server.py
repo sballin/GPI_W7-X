@@ -172,6 +172,10 @@ class RPServer:
                     remainingTasks.append((execTime, function, args))
             self.taskQueue = remainingTasks
             
+    def setState(self, state):
+        self.state = state
+        self._addToLog('Setting middle server state = ' + state)
+            
     def init(self):
         pass
         
@@ -396,10 +400,6 @@ class RPServer:
     def postShotActions(self):
         self.handleValve('V3', command='open')
         self.setState('idle')
-        
-    def setState(self, state):
-        self.state = state
-        self._addToLog('Setting middle server state = ' + state)
         
     def handleT0(self, p):
         valid_start_1 = p['puff_1_start'] and p['puff_1_start'] >= 0
