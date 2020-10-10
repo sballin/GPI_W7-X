@@ -308,7 +308,7 @@ class RPServer:
         else:
             self._addToLog('Shutter register has bad value')
             
-    def getData(self):
+    def getDataForGUI(self):
         # Copy and flush message queue
         messageQueue = self.messageQueue
         self.messageQueue = []

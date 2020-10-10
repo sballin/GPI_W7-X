@@ -50,6 +50,26 @@ def find_nearest(array, value):
 
 class GUI:
     def __init__(self, root):
+        self.last_plot = None
+        self.mainloop_running = True   
+        self.starting_up = True
+        self.middleServerConnected = False
+        
+        self.pressureTimes = []
+        self.absPressures = []
+        self.diffPressures = []
+        
+        self.setupGUI(root)
+        self._add_to_log('GUI initialized')
+        
+        self.connectToServer()
+        if self.middleServerConnected:
+            self._add_to_log('GUI setting default state')
+            self.middle.setDefault()
+        
+        self.mainloop()
+        
+    def setupGUI(self, root):
         self.root = root
         self.root.title('GPI Valve Control')
         win_width = int(1200)
@@ -60,7 +80,7 @@ class GUI:
         y = (self.screen_height / 2) - (win_height / 2)
         self.root.geometry('%dx%d+%d+%d' % (win_width, win_height, x, y))
         self.root.protocol('WM_DELETE_WINDOW', self._quit_tkinter)
-        s=ttk.Style()
+        s = ttk.Style()
         s.theme_use('alt')
         gray = '#A3A3A3'
         self.root.config(background=gray)
@@ -130,12 +150,8 @@ class GUI:
         GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, variable=self.GPI_safe_status)
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
-        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handle_T0)
-        
-        self.pressureTimes = []
-        self.absPressures = []
-        self.diffPressures = []
-        
+        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handle_T0)        
+
         self.fig = Figure(figsize=(3.5, 6), dpi=100, facecolor=gray)
         self.fig.subplots_adjust(left=0.2, right=0.75, top=0.95, hspace=0.35)
         # Absolute pressure plot matplotlib setup
@@ -226,31 +242,15 @@ class GUI:
         log_controls_frame.pack(side=tk.TOP, fill=tk.BOTH, pady=10, expand=True)
         controls_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
         
-        self._add_to_log('GUI initialized')
-        
+    def connectToServer(self):
         self.middle = ServerProxy(MIDDLE_SERVER_ADDR, verbose=False, allow_none=True)
         try:
             self.middle.serverIsAlive()
+            self.middleServerConnected = True
             self._add_to_log('Connected to middle server ' + MIDDLE_SERVER_ADDR)
         except Exception as e:
             print('Connect to middle server', MIDDLE_SERVER_ADDR, 'failed:', e)
             self._add_to_log('Not connected to middle server ' + MIDDLE_SERVER_ADDR)
-            
-        self.last_plot = None
-        self.filling = False
-        self.preparing_to_pump_out = False
-        self.pumping_out = False
-        self.mainloop_running = True   
-        self.T0 = None
-        self.sent_T1_to_RP = False
-        self.done_puff_prep = False
-        self.both_puffs_done = None
-        self.starting_up = True
-        
-        self._add_to_log('GUI setting default state')
-        self.middle.setDefault()
-        
-        self.mainloop()
         
     def mainloop(self):
         # self._add_to_log('Setting default state')
@@ -269,14 +269,14 @@ class GUI:
                 # Get data on slower timescale now that it's queue-based
                 # self.get_data()
                 
-            self.getDataUpdateUI()
+                self.getDataUpdateUI()
              
             # Draw GUI and get callback results ((...).after(...))
             self.root.update()
             
             # Reduce CPU usage during non-crucial times
-            if not (self.preparing_to_pump_out or self.pumping_out or self.filling or self.T0):
-                time.sleep(.01)
+            # if not (self.preparing_to_pump_out or self.pumping_out or self.filling or self.T0):
+                # time.sleep(.01)
                              
     def _quit_tkinter(self):
         self.mainloop_running = False # ends our custom while loop
@@ -322,16 +322,19 @@ class GUI:
             
     def getDataUpdateUI(self):
         try:
-            data = self.middle.getData()
+            data = self.middle.getDataForGUI()
+            self.middleServerConnected = True
         except Exception as e:
-            print('GUI.getDataUpdateUI', e)
-            self.shutter_sensor_indicator.config(bg='black')
-            self.shutter_setting_indicator.config(bg='black')
-            self.V3_indicator.config(bg='black')
-            self.V4_indicator.config(bg='black')
-            self.V5_indicator.config(bg='black')
-            self.V7_indicator.config(bg='black')
-            self.FV2_indicator.config(bg='black')
+            if self.middleServerConnected:
+                self.middleServerConnected = False
+                print('GUI.getDataUpdateUI', e)
+                self.shutter_sensor_indicator.config(bg='black')
+                self.shutter_setting_indicator.config(bg='black')
+                self.V3_indicator.config(bg='black')
+                self.V4_indicator.config(bg='black')
+                self.V5_indicator.config(bg='black')
+                self.V7_indicator.config(bg='black')
+                self.FV2_indicator.config(bg='black')
             return
         
         shutterSetting = data['shutter_setting']
