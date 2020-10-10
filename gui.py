@@ -76,23 +76,23 @@ class GUI:
         font = tkinter.font.Font(size=6)
         
         self.shutter_setting_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter setting', fg='white', bg='black', font=font)
-        self.shutter_setting_indicator.bind("<Button-1>", lambda event: self.RPServer.handleToggleShutter())
+        self.shutter_setting_indicator.bind("<Button-1>", lambda event: self.middle.handleToggleShutter())
         self.shutter_sensor_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter sensor', fg='white', bg='black', font=font)
         
         self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font)
-        self.FV2_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('FV2'))
+        self.FV2_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('FV2'))
 
         self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font)
-        self.V5_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V5'))
+        self.V5_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V5'))
 
         self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font)
-        self.V4_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V4'))
+        self.V4_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V4'))
 
         self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font)
-        self.V3_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V3'))
+        self.V3_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V3'))
         
         self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font)
-        self.V7_indicator.bind("<Button-1>", lambda event: self.RPServer.handleValve('V7'))
+        self.V7_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V7'))
 
         gaugeFont = tkinter.font.Font(size=8)
         self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#004DD4', fg='white', justify=tk.LEFT, font=gaugeFont)
@@ -213,9 +213,9 @@ class GUI:
         
         self._add_to_log('GUI initialized')
         
-        self.RPServer = ServerProxy(MIDDLE_SERVER_ADDR, verbose=False, allow_none=True)
+        self.middle = ServerProxy(MIDDLE_SERVER_ADDR, verbose=False, allow_none=True)
         try:
-            self.RPServer.serverIsAlive()
+            self.middle.serverIsAlive()
             self._add_to_log('Connected to middle server ' + MIDDLE_SERVER_ADDR)
         except Exception as e:
             print('Connect to middle server', MIDDLE_SERVER_ADDR, 'failed:', e)
@@ -233,7 +233,7 @@ class GUI:
         self.starting_up = True
         
         self._add_to_log('GUI setting default state')
-        self.RPServer.setDefault()
+        self.middle.setDefault()
         
         self.mainloop()
         
@@ -307,7 +307,7 @@ class GUI:
             
     def getDataUpdateUI(self):
         try:
-            data = self.RPServer.getData()
+            data = self.middle.getData()
         except Exception as e:
             print('GUI.getDataUpdateUI', e)
             self.shutter_sensor_indicator.config(bg='black')
@@ -381,7 +381,7 @@ class GUI:
         # Absolute gauge plot setup
         self.ax_abs.yaxis.tick_right()
         self.ax_abs.yaxis.set_label_position('right')
-        self.ax_abs.plot(relative_times, self.absPressures, c='C0', linewidth=2, marker='.')
+        self.ax_abs.plot(relative_times, self.absPressures, c='C0', linewidth=2)
         self.ax_abs.set_ylabel('Torr')
         plt.setp(self.ax_abs.get_xticklabels(), visible=False)
         self.ax_abs.grid(True, color='#c9dae5')
@@ -390,7 +390,7 @@ class GUI:
         # Differential gauge plot setup
         self.ax_diff.yaxis.tick_right()
         self.ax_diff.yaxis.set_label_position('right')
-        self.ax_diff.plot(relative_times, self.diffPressures, c='C1', linewidth=2, marker='.')
+        self.ax_diff.plot(relative_times, self.diffPressures, c='C1', linewidth=2)
         self.ax_diff.set_ylabel('Torr')
         self.ax_diff.set_xlabel('Seconds')
         self.ax_diff.grid(True, color='#e5d5c7')
@@ -410,7 +410,7 @@ class GUI:
         May be possible to remove this method. Does Red Pitaya even check permission?
         '''
         permissionGUIValue = getattr(self, 'permission_%d' % puffNumber).get()
-        self.RPServer.handlePermission(puffNumber, permissionGUIValue)
+        self.middle.handlePermission(puffNumber, permissionGUIValue)
         
     def handle_fill(self):
         pass
@@ -429,7 +429,7 @@ class GUI:
         pass
         
     def handle_T0(self):
-        self.RPServer.handleT0({'puff_1_permission': self.permission_1.get(),
+        self.middle.handleT0({'puff_1_permission': self.permission_1.get(),
                                 'puff_1_start': self.start(1),
                                 'puff_1_duration': self.duration(1),
                                 'puff_2_permission': self.permission_2.get(),
