@@ -114,6 +114,8 @@ class RPServer:
         self.pressureTimes = []
         self.absPressures = []
         self.diffPressures = []
+        # Keep track of server health
+        self.mainloopTimes = []
         
         # Create new xmlrpc server and register RPServer with it to expose RPServer functions
         address = ('127.0.0.1', 50000)
@@ -127,6 +129,8 @@ class RPServer:
         
         self._addToLog('Server setting default state')
         self.setDefault()
+        
+        self.addTask(10, self.announceServerHealth, [])
         
         self._mainloop()
         
@@ -171,6 +175,14 @@ class RPServer:
                 else:
                     remainingTasks.append((execTime, function, args))
             self.taskQueue = remainingTasks
+            
+            self.mainloopTimes.append(time.time()-now)
+    
+    def announceServerHealth(self):
+        ml = np.array(self.mainloopTimes)*1000
+        self._addToLog('MS main loop: mean %.3g ms, std %.3g ms, min %.3g ms, max %.3g ms' % (ml.mean(), ml.std(), ml.min(), ml.max()))
+        self.mainloopTimes = []
+        self.addTask(10, self.announceServerHealth, [])
             
     def setState(self, state):
         self.state = state
@@ -280,12 +292,6 @@ class RPServer:
                 self._addToLog('Lost some data due to network lag')
             else:
                 self.gotFirstQueue = True
-
-                
-    def getPressureData(self):
-        data = self.GUIDataQueue.copy()
-        self.GUIDataQueue = []
-        return data
         
     def setShutter(self, state):
         if state == 'open':

@@ -30,6 +30,7 @@ FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
 PLENUM_VOLUME = 0.802 # L 
+TORR_TO_BAR = 0.00133322
 SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/diff_pressures/' # for puff pressure data
     
     
@@ -114,10 +115,6 @@ class GUI:
         self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font)
         self.V7_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V7'))
 
-        gaugeFont = tkinter.font.Font(size=8)
-        self.abs_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#004DD4', fg='white', justify=tk.LEFT, font=gaugeFont)
-        self.diff_gauge_label = tk.Label(system_frame, text='0\nTorr', bg='#DF7D00', fg='white', justify=tk.LEFT, font=gaugeFont)
-
         controls_frame = tk.Frame(self.root, background=gray)
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
         fill_controls_line1 = tk.Frame(fill_controls_frame, background=gray, pady=5)
@@ -153,27 +150,31 @@ class GUI:
         GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handle_T0)        
 
         self.fig = Figure(figsize=(3.5, 6), dpi=100, facecolor=gray)
-        self.fig.subplots_adjust(left=0.2, right=0.75, top=0.95, hspace=0.35)
+        self.fig.subplots_adjust(left=0.3, right=0.7, top=0.925, hspace=0.5)
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
-        self.ax_abs.yaxis.tick_right()
-        self.ax_abs.yaxis.set_label_position('right')
         self.ax_abs.set_ylabel('Torr')
         self.ax_abs.set_xlabel('Seconds')
         self.ax_abs.set_title('Absolute gauge')
         self.ax_abs.grid(True, color='#c9dae5')
         self.ax_abs.patch.set_facecolor('#e3eff7')
-        self.line_abs, = self.ax_abs.plot([], [], c='C0', linewidth=2)
+        self.line_abs, = self.ax_abs.plot([], [], c='C0', linewidth=1)
+        self.ax_abs_conv = self.ax_abs.twinx()
+        self.ax_abs_conv.set_ylabel('Bar')
+        self.line_abs_conv, = self.ax_abs_conv.plot([], [], c='C0', alpha=0)
+        self.abs_text = self.ax_abs.text(0.97, 0.97, '? Torr\n? Bar', horizontalalignment='right', verticalalignment='top', transform=self.ax_abs.transAxes, fontsize=10)
         # Differential pressure plot matplotlib setup
         self.ax_diff = self.fig.add_subplot(212)
-        self.ax_diff.yaxis.tick_right()
-        self.ax_diff.yaxis.set_label_position('right')
         self.ax_diff.set_ylabel('Torr')
         self.ax_diff.set_xlabel('Seconds')
         self.ax_diff.set_title('Differential gauge')
         self.ax_diff.grid(True, color='#e5d5c7')
         self.ax_diff.patch.set_facecolor('#f7ebe1')
-        self.line_diff, = self.ax_diff.plot([], [], c='C1', linewidth=2)
+        self.line_diff, = self.ax_diff.plot([], [], c='C1', linewidth=1)
+        self.ax_diff_conv = self.ax_diff.twinx()
+        self.ax_diff_conv.set_ylabel('Bar')
+        self.line_diff_conv, = self.ax_diff_conv.plot([], [], c='C1', alpha=0)
+        self.diff_text = self.ax_diff.text(0.97, 0.97, '? Torr\n? Bar', horizontalalignment='right', verticalalignment='top', transform=self.ax_diff.transAxes, fontsize=10)
         # Plot tkinter setup
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
@@ -193,8 +194,6 @@ class GUI:
         self.FV2_indicator.place(relx=.635, rely=.067, relwidth=.05, relheight=.026)
         self.shutter_setting_indicator.place(relx=.817, rely=.062, relwidth=.2, relheight=.026)
         self.shutter_sensor_indicator.place(relx=.817, rely=.092, relwidth=.2, relheight=.026)
-        self.abs_gauge_label.place(relx=.883, rely=.545)
-        self.diff_gauge_label.place(relx=.605, rely=.761)
         system_frame.pack(side=tk.LEFT)
         ## Column 2
         self.canvas.get_tk_widget().pack(side=tk.LEFT)
@@ -373,9 +372,6 @@ class GUI:
         if time.time() - self.last_plot > UPDATE_INTERVAL:
             self.draw_plots()
             self.last_plot = time.time()
-            # Update pressure labels in diagram
-            self.abs_gauge_label['text'] = '%.3g\nTorr' % self.absPressures[-1]
-            self.diff_gauge_label['text'] = '%.3g\nTorr' % self.diffPressures[-1]
             
     def start(self, puff_number):
         try:
@@ -404,11 +400,19 @@ class GUI:
         self.line_abs.set_data(relative_times, self.absPressures)
         self.ax_abs.relim()
         self.ax_abs.autoscale_view(True,True,True)
+        self.line_abs_conv.set_data(relative_times, np.array(self.absPressures)*TORR_TO_BAR)
+        self.ax_abs_conv.relim()
+        self.ax_abs_conv.autoscale_view(True,True,True)
+        self.abs_text.set_text('%.3g Torr\n%.3g Bar' % (self.absPressures[-1], self.absPressures[-1]*TORR_TO_BAR))
         
         # Update differential gauge plot
         self.line_diff.set_data(relative_times, self.diffPressures)
         self.ax_diff.relim()
         self.ax_diff.autoscale_view(True,True,True)
+        self.line_diff_conv.set_data(relative_times, np.array(self.diffPressures)*TORR_TO_BAR)
+        self.ax_diff_conv.relim()
+        self.ax_diff_conv.autoscale_view(True,True,True)
+        self.diff_text.set_text('%.3g Torr\n%.3g Bar' % (self.diffPressures[-1], self.diffPressures[-1]*TORR_TO_BAR))
         
         self.fig.canvas.draw_idle()
 
