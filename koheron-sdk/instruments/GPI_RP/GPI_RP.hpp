@@ -168,7 +168,11 @@ class GPI_RP {
     
     // Function to return data
     std::vector<uint32_t>& get_GPI_data() {
-        // ctx.log<INFO>("adc_data_queue size: %d", adc_data_queue.size());
+	while (getting == true) {
+            std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+	}
+	sending = true;
+        //ctx.log<INFO>("adc_data_queue size: %d", adc_data_queue.size());
         size_t queue_count = adc_data_queue.size();
         adc_data.resize(queue_count);
         for (size_t i = 0; i < queue_count; i++) {
@@ -176,6 +180,7 @@ class GPI_RP {
             adc_data_queue.pop();
         }
         dataAvailable = false;
+	sending = false;
         return adc_data;
     }
 
@@ -198,10 +203,11 @@ class GPI_RP {
 
     std::atomic<bool> fifo_acquisition_started{false};
     std::atomic<bool> dataAvailable{false};
+    std::atomic<bool> sending{false};
+    std::atomic<bool> getting{false};
 
     std::thread fifo_thread;
     void fifo_acquisition_thread();
-
 };
 
 inline void GPI_RP::start_fifo_acquisition() {
@@ -221,7 +227,10 @@ inline void GPI_RP::fifo_acquisition_thread() {
     uint32_t dropped=0;
     
     // While loop to reserve the number of samples needed to be collected
-    while (fifo_acquisition_started){
+    while (fifo_acquisition_started) {
+	while (sending == true) {
+            std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+	}
         dropped = fill_buffer(dropped);
         std::this_thread::sleep_for(fifo_sleep_for);
     }
@@ -231,6 +240,7 @@ inline void GPI_RP::fifo_acquisition_thread() {
 inline uint32_t GPI_RP::fill_buffer(uint32_t dropped) {
     // Retrieving the number of samples to collect
     uint32_t samples=get_fifo_length();
+    getting = true;
     
     // This has to go before samples > 0 check or it probably won't run
     if (dataAvailable == false)
@@ -254,6 +264,7 @@ inline uint32_t GPI_RP::fill_buffer(uint32_t dropped) {
             adc_data_queue.pop();
     }
 
+    getting = false;
     return dropped;
 }
 
