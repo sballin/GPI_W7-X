@@ -176,6 +176,9 @@ class RPServer:
                     remainingTasks.append((execTime, function, args))
             self.taskQueue = remainingTasks
             
+            # if self.state == 'idle':
+            #     time.sleep(0.05)
+            
             self.mainloopTimes.append(time.time()-now)
     
     def announceServerHealth(self):
@@ -264,15 +267,28 @@ class RPServer:
         print(message)
         
     def _getKoheronData(self):
-        # Add fast readings
-        combined_pressure_history = self.RPKoheron.get_GPI_data()
         now = time.time()
-        absPressures = [abs_torr(i) for i in combined_pressure_history]
-        diffPressures = [diff_torr(i) for i in combined_pressure_history]
-        self.absPressures.extend(absPressures)
-        self.diffPressures.extend(diffPressures)
-        delta = 0.0001
-        self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+        try:
+            # This may raise an exception due to network timeout
+            combined_pressure_history = self.RPKoheron.get_GPI_data()
+            
+            # Add fast readings
+            self.absPressures.extend([abs_torr(i) for i in combined_pressure_history])
+            self.diffPressures.extend([diff_torr(i) for i in combined_pressure_history])
+            delta = 0.0001
+            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+            
+            if len(combined_pressure_history) == 50000:
+                # Show this message except during program startup, when the FPGA queue is normally full
+                if self.gotFirstQueue:
+                    self._addToLog('Lost some data due to network lag')
+                else:
+                    self.gotFirstQueue = True
+        except Exception as e:
+            self._addToLog(str(e))
+            self._addToLog('Attempting to reconnect to RP')
+            rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
+            self.RPKoheron = GPI_RP(rpConnection)
         
         # Remove fast readings older than READING_HISTORY seconds, except during a shot cycle
         if self.state != 'shot': 
@@ -282,16 +298,12 @@ class RPServer:
             self.diffPressures = self.diffPressures[range_start:]
             
         # Calculate moving mean of 1000 samples (0.1 s) to send to GUI
-        self.GUIData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
-                                move_mean(self.absPressures, 1000)[::1000].tolist(),
-                                move_mean(self.diffPressures, 1000)[::1000].tolist()))
-        
-        if len(combined_pressure_history) == 50000:
-            # Show this message except during program startup, when the FPGA queue is normally full
-            if self.gotFirstQueue:
-                self._addToLog('Lost some data due to network lag')
-            else:
-                self.gotFirstQueue = True
+        if len(self.pressureTimes) > 1000:
+            self.GUIData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
+                                    move_mean(self.absPressures, 1000)[::1000].tolist(),
+                                    move_mean(self.diffPressures, 1000)[::1000].tolist()))
+        else:
+            self.GUIData = [[],[],[]]
         
     def setShutter(self, state):
         if state == 'open':
