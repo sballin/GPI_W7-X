@@ -5,7 +5,8 @@ SHELL := bash
 .DELETE_ON_ERROR:
 .SUFFIXES:
 
-CONFIG ?= examples/red-pitaya/led-blinker/config.yml
+CONFIG ?= instruments/GPI_RP/config.yml
+#examples/red-pitaya/led-blinker/config.yml
 SDK_PATH ?= .
 MODE ?= development
 HOST ?= 192.168.1.100
