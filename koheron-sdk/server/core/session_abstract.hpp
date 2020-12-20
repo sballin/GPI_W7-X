@@ -14,6 +14,7 @@ class SessionAbstract
   public:
     explicit SessionAbstract(int socket_type_)
     : type(socket_type_) {}
+    virtual ~SessionAbstract() = default;
 
     template<typename... Tp> std::tuple<int, Tp...> deserialize(Command& cmd);
     template<typename Tp> int recv(Tp& container, Command& cmd);
