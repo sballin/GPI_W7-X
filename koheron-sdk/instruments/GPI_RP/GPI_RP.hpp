@@ -5,6 +5,7 @@
 #ifndef __DRIVERS_GPI_RP_HPP__
 #define __DRIVERS_GPI_RP_HPP__
 
+#include <iostream>
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -32,7 +33,13 @@ class GPI_RP {
         , adc_fifo_map(ctx.mm.get<mem::adc_fifo>())
         , adc_data(adc_buff_size)
         {
-            start_fifo_acquisition();
+            fifo_thread = std::thread{&GPI_RP::fifo_acquisition_thread, this};
+        }
+
+	~GPI_RP()
+        {
+            fifo_thread_running = false;
+            fifo_thread.join();
         }
 
         // GPI_RP generator
@@ -162,29 +169,31 @@ class GPI_RP {
            return (adc_fifo_map.read<Fifo_regs::rlr>() & 0x3FFFFF) >> 2;
         }
 
-        // Function to return the buffer length
+        /** return the buffer length */
         uint32_t get_buffer_length() {
             return adc_data_queue.size();
         }
 
-        // Function to return data
-        std::vector<uint32_t>& get_GPI_data() {
+        /** return data */
+        std::vector<uint32_t>& get_GPI_data()
+        {
             const std::lock_guard<std::mutex> lock(adc_data_queue_mutex);
-            size_t queue_count = adc_data_queue.size();
+            const size_t queue_count = adc_data_queue.size();
             adc_data.resize(queue_count);
             for (size_t i = 0; i < queue_count; i++) {
                 adc_data[i] = adc_data_queue.front();
                 adc_data_queue.pop();
             }
-            dataAvailable = false;
             return adc_data;
         }
 
-        void wait_for(uint32_t n_pts) {
-            do {} while (get_fifo_length() < n_pts);
+        void wait_for(uint32_t n_pts)
+        {
+            while (get_fifo_length() < n_pts)
+            { // sleep to keep cpu low
+                usleep(100);
+            }
         }
-
-        void start_fifo_acquisition();
 
     private:
         Context& ctx;
@@ -192,71 +201,43 @@ class GPI_RP {
         Memory<mem::status>& sts;
         Memory<mem::adc_fifo>& adc_fifo_map;
 
+        std::mutex adc_data_queue_mutex;
         std::queue<uint32_t> adc_data_queue;
         std::vector<uint32_t> adc_data;
 
-        std::mutex adc_data_queue_mutex;
-        bool dataAvailable = false;
-
-        uint32_t fill_buffer(uint32_t);
-
-        std::atomic<bool> fifo_acquisition_started{false};
+        void fill_buffer();
 
         std::thread fifo_thread;
+        std::atomic<bool> fifo_thread_running{true};
         void fifo_acquisition_thread();
 };
 
-inline void GPI_RP::start_fifo_acquisition() {
-    if (! fifo_acquisition_started) {
-        fifo_thread = std::thread{&GPI_RP::fifo_acquisition_thread, this};
-        fifo_thread.detach();
-    }
-}
-
-inline void GPI_RP::fifo_acquisition_thread() {
-    constexpr auto fifo_sleep_for = std::chrono::nanoseconds(1000000);
-    fifo_acquisition_started = true;
+inline void GPI_RP::fifo_acquisition_thread()
+{
     ctx.log<INFO>("Starting fifo acquisition");
-    // adc_data.reserve(16777216);
-    // adc_data.resize(0);
-
-    uint32_t dropped=0;
-
     // While loop to reserve the number of samples needed to be collected
-    while (fifo_acquisition_started) {
-        dropped = fill_buffer(dropped);
-        // Sleep 1 ms
-        std::this_thread::sleep_for(fifo_sleep_for);
+    while (fifo_thread_running)
+    {
+        fill_buffer();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 
 // Member function to fill buffer array
-inline uint32_t GPI_RP::fill_buffer(uint32_t dropped) {
-    const std::lock_guard<std::mutex> lock(adc_data_queue_mutex);
+inline void GPI_RP::fill_buffer()
+{
     // Retrieving the number of samples to collect
-    uint32_t samples=get_fifo_length();
-
-    // This has to go before samples > 0 check or it probably won't run
-    if (dataAvailable == false) {
-        // Destroy old measurement data to prevent mem overflow
-        adc_data.clear();
-        adc_data.resize(0);
-        // ctx.log<INFO>("adc_data resized to 0");
-    }
-
-    // Collecting samples in buffer
-    if (samples > 0) {
-        dataAvailable = true;
-        // Checking for dropped samples
-        if (samples >= 32768)
-            dropped += 1;
+    const uint32_t samples = get_fifo_length();
+    if (samples > 0)
+    {
+        const std::lock_guard<std::mutex> lock(adc_data_queue_mutex);
         for (size_t i=0; i < samples; i++)
+        {
+            if (adc_data_queue.size() == adc_buff_size)
+                adc_data_queue.pop();
             adc_data_queue.push(read_fifo());
-        while (adc_data_queue.size() > adc_buff_size)
-            adc_data_queue.pop();
+        }
     }
-
-    return dropped;
 }
 
 
