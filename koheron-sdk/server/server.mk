@@ -49,7 +49,7 @@ OBJ := $(SERVER_OBJ) $(INTERFACE_DRIVERS_OBJ) $(DRIVERS_OBJ) $(CONTEXT_OBJS)
 DEP := $(subst .o,.d,$(OBJ))
 -include $(DEP)
 
-CCXX := /usr/bin/arm-linux-gnueabihf-g++ -flto
+CCXX := arm-linux-gnueabihf-g++ -flto
 
 SERVER_CCXXFLAGS := -Wall -Werror -Wextra
 SERVER_CCXXFLAGS += -I$(TMP_SERVER_PATH) -I$(SERVER_PATH)/core -I$(SDK_PATH) -I. -I$(SERVER_PATH)/context -I$(SERVER_PATH)/drivers -I$(PROJECT_PATH)
