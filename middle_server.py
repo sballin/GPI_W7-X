@@ -119,7 +119,7 @@ class RPServer:
         
         # Create new xmlrpc server and register RPServer with it to expose RPServer functions
         address = ('127.0.0.1', 50000)
-        self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address, allow_none=True)
+        self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address, allow_none=True, logRequests=False)
         self.RPCServer.register_instance(self)
         # This timeout is how long handle_request() blocks the main thread even when there are no requests
         self.RPCServer.timeout = .001
@@ -339,7 +339,8 @@ class RPServer:
                 'V7': self.getValveStatus('V7'),
                 'FV2': self.getValveStatus('FV2'),
                 'pressures_history': self.GUIData,
-                'messages': messageQueue}
+                'messages': messageQueue,
+                'state': self.state}
             
     def getShutterSetting(self):
         return self.RPKoheron.get_analog_out()

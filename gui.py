@@ -64,9 +64,6 @@ class GUI:
         self._add_to_log('GUI initialized')
         
         self.connectToServer()
-        if self.middleServerConnected:
-            self._add_to_log('GUI setting default state')
-            self.middle.setDefault()
         
         self.mainloop()
         
@@ -114,24 +111,38 @@ class GUI:
         
         self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font)
         self.V7_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V7'))
-
+        
+        # Entire column to the right of the live graphs
         controls_frame = tk.Frame(self.root, background=gray)
+        
+        # State display and control
+        ## Line 1
+        state_frame = tk.Frame(controls_frame, background=gray)
+        state_frame_line1 = tk.Frame(state_frame, background=gray, pady=5)
+        self.state_text = tk.StringVar()
+        self.state_text.set('State: middle server not connected')
+        state_label = tk.Label(state_frame_line1, textvariable=self.state_text, background=gray)
+        
+        # Pump and fill controls
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
+        ## Line 1
         fill_controls_line1 = tk.Frame(fill_controls_frame, background=gray, pady=5)
         desired_pressure_label = tk.Label(fill_controls_line1, text='Desired pressure (Torr):', background=gray)
         self.desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
-
+        ## Line 2
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
         fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.handle_fill)
         pump_refill_button = ttk.Button(fill_controls_line2, text='Pump down and refill', command=self.handle_pump_refill)
 
+        # Puff controls
+        ## Line 1
         self.permission_1 = tk.IntVar()
         puff_controls_frame = tk.Frame(controls_frame, background=gray)
         self.permission_1_check = tk.Checkbutton(puff_controls_frame, variable=self.permission_1, command=lambda: self.handle_permission(1), background=gray)
         self.start_1_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_1_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_1_entry.insert(0, str(DEFAULT_PUFF))
-
+        ## Line 2
         self.permission_2 = tk.IntVar()
         self.permission_2_check = tk.Checkbutton(puff_controls_frame, variable=self.permission_2, command=lambda: self.handle_permission(2), background=gray)
         self.start_2_entry = ttk.Entry(puff_controls_frame, width=10)
@@ -199,6 +210,11 @@ class GUI:
         self.canvas.get_tk_widget().pack(side=tk.LEFT)
         self.canvas.get_tk_widget().configure()
         ## Column 3
+        ### State frame
+        state_label.pack(side=tk.LEFT)
+        state_frame_line1.pack(side=tk.TOP, fill=tk.X)
+        state_frame.pack(side=tk.TOP, fill=tk.X, pady=0)
+        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Fill controls frame
         desired_pressure_label.pack(side=tk.LEFT)
         self.desired_pressure_entry.pack(side=tk.LEFT)
@@ -319,6 +335,18 @@ class GUI:
         for e in elements:
             e.config(state=state)
             
+    def handleDisconnected(self):
+        self.middleServerConnected = False
+        self.state_text.set('State: middle server not connected')
+        self._add_to_log('Middle server disconnected')
+        self.shutter_sensor_indicator.config(bg='black')
+        self.shutter_setting_indicator.config(bg='black')
+        self.V3_indicator.config(bg='black')
+        self.V4_indicator.config(bg='black')
+        self.V5_indicator.config(bg='black')
+        self.V7_indicator.config(bg='black')
+        self.FV2_indicator.config(bg='black')
+        
     def getDataUpdateUI(self):
         try:
             data = self.middle.getDataForGUI()
@@ -326,18 +354,12 @@ class GUI:
                 self._add_to_log('Reconnected to middle server')
                 self.middleServerConnected = True
         except Exception as e:
+            print('GUI.getDataUpdateUI', e)
             if self.middleServerConnected:
-                self.middleServerConnected = False
-                print('GUI.getDataUpdateUI', e)
-                self._add_to_log('Middle server disconnected')
-                self.shutter_sensor_indicator.config(bg='black')
-                self.shutter_setting_indicator.config(bg='black')
-                self.V3_indicator.config(bg='black')
-                self.V4_indicator.config(bg='black')
-                self.V5_indicator.config(bg='black')
-                self.V7_indicator.config(bg='black')
-                self.FV2_indicator.config(bg='black')
+                self.handleDisconnected()
             return
+        
+        self.state_text.set('State: ' + data['state'])
         
         shutterSetting = data['shutter_setting']
         if shutterSetting == 1:
@@ -375,18 +397,16 @@ class GUI:
             
     def start(self, puff_number):
         try:
-            text = getattr(self, 'start_%d_entry' % puff_number).get()
+            text = getattr(self, 'start_%d_entry' % puff_number).get().strip()
             return float(text)
         except Exception as e:
-            print('GUI.start', e)
             return None
         
     def duration(self, puff_number):
         try:
-            text = getattr(self, 'duration_%d_entry' % puff_number).get()
+            text = getattr(self, 'duration_%d_entry' % puff_number).get().strip()
             return float(text)
         except Exception as e:
-            print('GUI.duration', e)
             return None
     
     def draw_plots(self):
@@ -444,12 +464,12 @@ class GUI:
         
     def handle_T0(self):
         self.middle.handleT0({'puff_1_permission': self.permission_1.get(),
-                                'puff_1_start': self.start(1),
-                                'puff_1_duration': self.duration(1),
-                                'puff_2_permission': self.permission_2.get(),
-                                'puff_2_start': self.start(2),
-                                'puff_2_duration': self.duration(2),
-                                'shutter_change_duration': SHUTTER_CHANGE})
+                              'puff_1_start': self.start(1),
+                              'puff_1_duration': self.duration(1),
+                              'puff_2_permission': self.permission_2.get(),
+                              'puff_2_start': self.start(2),
+                              'puff_2_duration': self.duration(2),
+                              'shutter_change_duration': SHUTTER_CHANGE})
     
     def plot_puffs(self):
         try:
