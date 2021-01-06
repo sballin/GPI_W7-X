@@ -19,7 +19,6 @@ from matplotlib.figure import Figure
 
 
 MIDDLE_SERVER_ADDR = 'http://127.0.0.1:50000'
-FAKE_RP = True
 UPDATE_INTERVAL = .5  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
@@ -131,8 +130,16 @@ class GUI:
         self.desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
         ## Line 2
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
-        fill_button = ttk.Button(fill_controls_line2, text='Fill', command=self.handle_fill)
-        pump_refill_button = ttk.Button(fill_controls_line2, text='Pump down and refill', command=self.handle_pump_refill)
+        self.pumpOut = tk.IntVar()
+        pump_out_label = tk.Label(fill_controls_line2, text='Pump out first', background=gray)
+        pump_out_check = tk.Checkbutton(fill_controls_line2, variable=self.pumpOut, background=gray)
+        self.exhaust = tk.IntVar()
+        self.exhaust.set(1)
+        exhaust_label = tk.Label(fill_controls_line2, text='Exhaust >770 Torr', background=gray)
+        exhaust_check = tk.Checkbutton(fill_controls_line2, variable=self.exhaust, background=gray)
+        ## Line 3
+        fill_controls_line3 = tk.Frame(fill_controls_frame, background=gray)
+        execute_button = ttk.Button(fill_controls_line3, text='Execute', command=self.handleChangePressure)
 
         # Puff controls
         ## Line 1
@@ -218,10 +225,14 @@ class GUI:
         ### Fill controls frame
         desired_pressure_label.pack(side=tk.LEFT)
         self.desired_pressure_entry.pack(side=tk.LEFT)
-        fill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        pump_refill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        execute_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        pump_out_label.pack(side=tk.LEFT, pady=5)
+        pump_out_check.pack(side=tk.LEFT, pady=5, padx=5)
+        exhaust_label.pack(side=tk.LEFT, pady=5)
+        exhaust_check.pack(side=tk.LEFT, pady=5, padx=5)
         fill_controls_line1.pack(side=tk.TOP, fill=tk.X)
         fill_controls_line2.pack(side=tk.TOP, fill=tk.X)
+        fill_controls_line3.pack(side=tk.TOP, fill=tk.X)
         fill_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Puff controls frame
@@ -239,9 +250,9 @@ class GUI:
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
         ### Permission controls frame
         W7X_permission_label.pack(side=tk.LEFT)
-        W7X_permission_check.pack(side=tk.LEFT)
+        W7X_permission_check.pack(side=tk.LEFT, padx=5)
         GPI_safe_state_label.pack(side=tk.LEFT)
-        GPI_safe_state_check.pack(side=tk.LEFT)
+        GPI_safe_state_check.pack(side=tk.LEFT, padx=5)
         permission_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ### Action controls frame
         GPI_T0_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -446,21 +457,9 @@ class GUI:
         permissionGUIValue = getattr(self, 'permission_%d' % puffNumber).get()
         self.middle.handlePermission(puffNumber, permissionGUIValue)
         
-    def handle_fill(self):
-        pass
-
-    def handle_pump_refill(self, skip_prep=False):
-        '''
-        # Prepping for pump out
-        If the "pump-out and refill" button is pushed and the absolute pressure is > 750 Torr, 
-        then OPEN V7. CLOSE V7 when the pressure is below 750 Torr, and then OPEN V4. After V4 
-        is opened the logic is the same as it is now, i.e. pump out until the pressure has been 
-        < ~0 for xx seconds.
-        
-        This method only initiates the above processes. For the rest of the code related to this 
-        logic, see the mainloop method.
-        '''
-        pass
+    def handleChangePressure(self):
+        desiredPressure = float(self.desired_pressure_entry.get().strip())
+        self.middle.changePressure(desiredPressure, self.pumpOut.get(), self.exhaust.get())
         
     def handle_T0(self):
         self.middle.handleT0({'puff_1_permission': self.permission_1.get(),

@@ -1,6 +1,9 @@
 '''
 Server for valve control and data acquisition in GPI system at W7-X.
 
+Methods starting with _ should only be called in middle_server.py.
+Other methods can be called from gui.py.
+
 TODO:
 [ ] Data management (incl. analog input)
 [ ] Pumping/filling routines
@@ -28,10 +31,13 @@ DEFAULT_PUFF = 0.05  # seconds duration for each puff
 PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
+MAX_TORR = 3*760 # Torr, max pressure that user can request
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
 PLENUM_VOLUME = 0.802 # L 
 READING_HISTORY = 30 # seconds of pressure readings to keep in memory
 MAX_PUFF_DURATION = 2 # seconds max for FV2 to remain open for an individual puff
+SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
+PRESSURE_HZ = 10000 # sampling rate for absolute and differential pressure gauges
 
 
 def int_to_float(reading):
@@ -98,7 +104,7 @@ def find_nearest(array, value):
 
 class RPServer:
     def __init__(self):
-        self.state = 'idle' # filling, venting before pump out, pumping out, shot, manual control
+        self.state = 'idle' # filling, exhaust, pumping out, shot, manual control
         self.targetPressure = None
         self.pumpoutRefill = False
         self.gotFirstQueue = False
@@ -127,69 +133,69 @@ class RPServer:
         rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
         self.RPKoheron = GPI_RP(rpConnection)
         
-        self._addToLog('Server setting default state')
+        self.addToLog('Server setting default state')
         self.setDefault()
         
         self.addTask(10, self.announceServerHealth, [])
         
-        self._mainloop()
+        self.mainloop()
         
-    def _mainloop(self):
+    def mainloop(self):
         last_control = time.time()
         print('Serving...') 
         while True:
             now = time.time()
             
-            # Pump and fill loop logic
             if now - last_control > CONTROL_INTERVAL:
-                # if self.state == 'venting before pump out':
-                #     if self.absPressures[-1] < MECH_PUMP_LIMIT: 
-                #         self._addToLog('Completed venting before pump out')
-                #         self.handleValve('V7', command='close')
-                #         self.startPumpdown(skipPrep=True)
-                # if self.state == 'pumping out':
-                #     donePumping = all([p < PUMPED_OUT for p in self.absPressures[-5:]]) 
-                #     if donePumping:
-                #         self.handleValve('V4', command='close')
-                #         self._addToLog('Completed pump out. Beginning fill.')
-                #         self.startFill(self.targetPressure)
-                # if self.state == 'filling':
-                #     if self.absPressures[-1] > self.targetPressure - FILL_MARGIN:
-                #         self.handleValve('V5', command='close')
-                #         self.state = 'idle'
-                #         self.targetPressure = None
-                #         self._addToLog('Completed fill to %.2f Torr' % self.targetPressure)
                 last_control =  now
                 
                 # Get data on slower timescale now that it's queue-based
-                self._getKoheronData()
+                if SIMULATE_RP:
+                    self.getFakePressureData()
+                else:
+                    self.getPressureData()
                 
                 # Execute remote commands if any have been received
                 self.RPCServer.handle_request()
                     
             # Do any required tasks in task queue
-            remainingTasks = []
-            for execTime, function, args in self.taskQueue:
-                if execTime < time.time():
-                    function(*args)
-                else:
-                    remainingTasks.append((execTime, function, args))
-            self.taskQueue = remainingTasks
+            self.handleTasks()
             
             # if self.state == 'idle':
             #     time.sleep(0.05)
             
             self.mainloopTimes.append(time.time()-now)
+            
+    def handleTasks(self):
+        '''
+        Carry out any tasks that are up for execution in the task queue. Any tasks added to the task queue while this method is running will be executed at the very earliest on the next call to handleTasks.
+        '''
+        for execTime, function, args in self.taskQueue.copy():
+            if execTime < time.time():
+                function(*args)
+                self.taskQueue.remove((execTime, function, args))
+            
+    def addTask(self, execTime, function, args):
+        '''
+        execTime: seconds in future at which to execute this function
+        '''
+        self.taskQueue.append((time.time()+execTime, function, args))
+        
+    def addToLog(self, text):
+        time_string = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
+        message = time_string + ' ' + text
+        self.messageQueue.append(message)
+        print(message)
     
     def announceServerHealth(self):
         ml = np.array(self.mainloopTimes)*1000
-        self._addToLog('MS main loop: mean %.3g ms, std %.3g ms, min %.3g ms, max %.3g ms' % (ml.mean(), ml.std(), ml.min(), ml.max()))
+        self.addToLog('MS main loop: mean %.3g ms, std %.3g ms, min %.3g ms, max %.3g ms' % (ml.mean(), ml.std(), ml.min(), ml.max()))
         self.mainloopTimes = []
         self.addTask(10, self.announceServerHealth, [])
             
     def setState(self, state):
         self.state = state
-        self._addToLog('Setting middle server state = ' + state)
+        self.addToLog('Setting middle server state = ' + state)
             
     def init(self):
         pass
@@ -202,7 +208,7 @@ class RPServer:
         self.handleValve('FV2', command='close')
         self.setShutter('close')
         self.RPKoheron.send_T1(0)
-        self._addToLog('Finished setting default state')
+        self.addToLog('Finished setting default state')
         
     def disarm(self):
         pass
@@ -222,74 +228,144 @@ class RPServer:
         else:
             self.state = 'idle'
         
-    def startFill(self, targetPressure):
-        self.targetPressure = targetPressure
-        self._addToLog('Beginning fill')
-        self.state = 'filling'
-        self.handleValve('V5', command='open')
+    def currentPressure(self):
+        return np.mean(self.absPressures[-1000:])
         
-    def startPumpdown(self, targetPressure=PUMPED_OUT, skipPrep=False):
-        self.targetPressure = targetPressure
-        if self.absPressures[-1] > MECH_PUMP_LIMIT and not skipPrep:
-            self._addToLog('Venting before pump out')
-            self.handleValve('V7', command='open')
-            self.state = 'venting before pump out'
-        elif self.absPressures[-1] > PUMPED_OUT:
-            self._addToLog('Starting to pump out')
-            self.handleValve('V4', command='open')
-            self.state = 'pumping out'
+    def lowerPressure(self, desiredPressure, fillPressure):
+        '''
+        Lower the pressure and optionally start filling to another pressure.
+        
+        Args:
+            desiredPressure: (Torr) exhaust and/or pump down to this pressure
+            fillPressure: (Torr) if not None, fill to this pressure after pumping out
+        '''
+        if self.state == 'exhaust':
+            if desiredPressure < self.currentPressure() > MECH_PUMP_LIMIT:
+                if self.getValveStatus('V7') == 'close':
+                    self.addToLog('Beginning exhaust')
+                    self.handleValve('V7', command='open')
+                self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
+            elif desiredPressure < self.currentPressure() < MECH_PUMP_LIMIT:
+                self.state = 'pumping out'
+                self.addToLog('Exhaust complete (%.3g Torr), beginning pump out' % self.currentPressure())
+                self.handleValve('V7', command='close')
+                self.handleValve('V4', command='open')
+                self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
+            else:
+                self.handleValve('V7', command='close')
+                self.state = 'idle'
+                self.addToLog('Exhaust to %.3g Torr complete (%.3g Torr), pumping was not necessary' % (desiredPressure, self.currentPressure()))
+        elif self.state == 'pumping out':
+            if self.currentPressure() > desiredPressure:
+                if self.getValveStatus('V4') == 'close':
+                    self.handleValve('V4', command='open')
+                self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
+            else:
+                self.handleValve('V4', command='close')
+                self.state = 'idle'
+                self.addToLog('Pump out to %.3g Torr complete (%.3g Torr)' % (desiredPressure, self.currentPressure()))
+                if fillPressure is not None:
+                    self.state = 'filling'
+                    self.addTask(0, self.raisePressure, [fillPressure])
+            
+    def raisePressure(self, desiredPressure):
+        if self.state == 'filling':
+            if self.currentPressure() < desiredPressure:
+                if self.getValveStatus('V5') == 'close':
+                    self.addToLog('Beginning fill')
+                    self.handleValve('V5', command='open')
+                self.addTask(0, self.raisePressure, [desiredPressure])
+            else:
+                self.handleValve('V5', command='close')
+                self.state = 'idle'
+                self.addToLog('Fill to %.3g Torr complete (%.3g Torr)' % (desiredPressure, self.currentPressure()))
+            
+    def changePressure(self, desiredPressure, pumpOut, exhaust):
+        '''
+        Raise or lower pressure as necessary.
+        
+        Args:
+            desiredPressure: (Torr)
+            pumpOut: (bool) whether to pump to 0 Torr before filling to desired pressure
+            exhaust: (bool) whether to exhaust when pressure is > 770 Torr
+        '''
+        if desiredPressure < PUMPED_OUT or desiredPressure > MAX_TORR:
+            self.addToLog('User requested an invalid pressure')
+            return
+        # Proceed with raising/lowering the pressure
+        # Open V3 so that the absolute pressure gauge will be able to read
+        self.handleValve('V3', command='open')
+        if self.currentPressure() < desiredPressure and not pumpOut:
+            self.state = 'filling'
+            self.raisePressure(desiredPressure)
         else:
-            self._addToLog('No need to pump out')
+            if exhaust:
+                self.state = 'exhaust'
+            else:
+                self.state = 'pumping out'
+            if pumpOut:
+                self.lowerPressure(PUMPED_OUT, desiredPressure)
+            else:
+                self.lowerPressure(desiredPressure, None)
         
-    def startPumpoutRefill(self, targetPressure, skipPrep=False):
-        '''
-        # Prepping for pump out
-        If the "pump-out and refill" button is pushed and the absolute pressure is > 750 Torr, 
-        then OPEN V7. CLOSE V7 when the pressure is below 750 Torr, and then OPEN V4. After V4 
-        is opened the logic is the same as it is now, i.e. pump out until the pressure has been 
-        < ~0 for xx seconds.
-        
-        This method only initiates the above processes. For the rest of the code related to this 
-        logic, see the mainloop method.
-        '''
-        self.startPumpdown()
-        
-    def addTask(self, execTime, function, args):
-        '''
-        execTime: seconds in future at which to execute this function
-        '''
-        self.taskQueue.append((time.time()+execTime, function, args))
-        
-    def _addToLog(self, text):
-        time_string = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-        message = time_string + ' ' + text
-        self.messageQueue.append(message)
-        print(message)
-        
-    def _getKoheronData(self):
+    def getFakePressureData(self):
         now = time.time()
+        delta = 1/PRESSURE_HZ
+        # Create fake data for testing purposes
+        if self.absPressures:
+            # Continue creaking fake data
+            dp = 0
+            currentPressure = self.currentPressure()
+            valves = [self.getValveStatus('V3'), self.getValveStatus('V4'), self.getValveStatus('V5'), self.getValveStatus('V7'), self.getValveStatus('FV2')]
+            if valves == ['open', 'close', 'close', 'open', 'close'] and currentPressure > 760:
+                dp = -100
+            elif valves == ['open', 'open', 'close', 'close', 'close'] and currentPressure > 0:
+                dp = -100
+            elif valves == ['open', 'close', 'open', 'close', 'close'] and currentPressure < 2000:
+                dp = 100
+            dataLen = int((now-self.lastFakeDataTime)*PRESSURE_HZ)
+            self.absPressures.extend([(currentPressure+i*dp/PRESSURE_HZ)*np.random.normal(1, 0.05) for i in range(dataLen)])
+            self.diffPressures.extend(np.random.normal(1, 0.01, dataLen))
+            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+            self.lastFakeDataTime = now
+        else:
+            # Initialize fake data
+            self.absPressures = list(300*np.random.normal(1, 0.05, 10000))
+            self.diffPressures = list(np.random.normal(1, 0.1, 10000))
+            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+            self.lastFakeDataTime = now
+               
+        self.processPressureData(now)
+        
+    def getPressureData(self):
+        now = time.time()
+        delta = 1/PRESSURE_HZ
         try:
+            # Get data from RP
             # This may raise an exception due to network timeout
             combined_pressure_history = self.RPKoheron.get_GPI_data()
-            
+                    
             # Add fast readings
             self.absPressures.extend([abs_torr(i) for i in combined_pressure_history])
             self.diffPressures.extend([diff_torr(i) for i in combined_pressure_history])
-            delta = 0.0001
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
             
             if len(combined_pressure_history) == 50000:
                 # Show this message except during program startup, when the FPGA queue is normally full
                 if self.gotFirstQueue:
-                    self._addToLog('Lost some data due to network lag')
+                    self.addToLog('Lost some data due to network lag')
                 else:
                     self.gotFirstQueue = True
         except Exception as e:
-            self._addToLog(str(e))
-            self._addToLog('Attempting to reconnect to RP')
+            # Log disconnection and attempt to reconnect
+            self.addToLog(str(e))
+            self.addToLog('Attempting to reconnect to RP')
             rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
             self.RPKoheron = GPI_RP(rpConnection)
         
+        self.processPressureData(now)
+            
+    def processPressureData(self, now):
         # Remove fast readings older than READING_HISTORY seconds, except during a shot cycle
         if self.state != 'shot': 
             range_start = find_nearest(np.array(self.pressureTimes)-now, -READING_HISTORY)
@@ -307,13 +383,13 @@ class RPServer:
         
     def setShutter(self, state):
         if state == 'open':
-            self._addToLog('OPENING shutter')
+            self.addToLog('OPENING shutter')
             value = 1
         elif state == 'close':
-            self._addToLog('CLOSING shutter')
+            self.addToLog('CLOSING shutter')
             value = 0
         else:
-            self._addToLog('Bad shutter command')
+            self.addToLog('Bad shutter command')
             return
         self.RPKoheron.set_analog_out(value)
         
@@ -324,7 +400,7 @@ class RPServer:
         elif currentSetting == 1:
             self.setShutter('close')
         else:
-            self._addToLog('Shutter register has bad value')
+            self.addToLog('Shutter register has bad value')
             
     def getDataForGUI(self):
         # Copy and flush message queue
@@ -396,7 +472,7 @@ class RPServer:
         elif command == 'close':
             signal = 0
             action_text = 'CLOSING'
-        self._addToLog(action_text + ' ' + valve_name)
+        self.addToLog(action_text + ' ' + valve_name)
             
         # V3 expects opposite signals
         signal = int(not signal) if valve_name == 'V3' else signal
@@ -430,17 +506,17 @@ class RPServer:
         puff_2_happening = p['puff_2_permission'] and valid_start_2 and valid_duration_2
         # Puff 1 should always be used
         if not puff_1_happening:
-            self._addToLog('Error: puff 1 must be used')
+            self.addToLog('Error: puff 1 must be used')
             return
         # Puff 1 should never bleed into puff 2
         if puff_1_happening and puff_2_happening:
             if not p['puff_1_start'] + p['puff_1_duration'] < p['puff_2_start']:
-                self._addToLog('Error: puff 1 would bleed into puff 2')
+                self.addToLog('Error: puff 1 would bleed into puff 2')
                 return
         
         self.setState('shot')
-        self._addToLog('---T0---')
-        self.addTask(PRETRIGGER, self._addToLog, args=['---T1---'])
+        self.addToLog('---T0---')
+        self.addTask(PRETRIGGER, self.addToLog, args=['---T1---'])
         self.addTask(PRETRIGGER - 1 + p['puff_1_start'], self.handleValve, ['V3', 'close'])
         self.addTask(PRETRIGGER, self.sendT1toRP, [])
         
@@ -470,14 +546,14 @@ class RPServer:
         if puff_1_happening: # never False
             self.RPKoheron.set_fast_delay_1(int(p['puff_1_start']*1000))
             self.RPKoheron.set_fast_duration_1(int(p['puff_1_duration']*1000))
-            self.addTask(PRETRIGGER+p['puff_1_start'], self._addToLog, ['Puff 1 should happen now'])
+            self.addTask(PRETRIGGER+p['puff_1_start'], self.addToLog, ['Puff 1 should happen now'])
         else:
             self.RPKoheron.set_fast_delay_1(2+int(bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_1(2+int(bothPuffsDone*1000))
         if puff_2_happening:
             self.RPKoheron.set_fast_delay_2(int(p['puff_2_start']*1000))
             self.RPKoheron.set_fast_duration_2(int(p['puff_2_duration']*1000))
-            self.addTask(PRETRIGGER+p['puff_2_start'], self._addToLog, ['Puff 2 should happen now'])
+            self.addTask(PRETRIGGER+p['puff_2_start'], self.addToLog, ['Puff 2 should happen now'])
         else:
             self.RPKoheron.set_fast_delay_2(2+int(bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_2(2+int(bothPuffsDone*1000))
