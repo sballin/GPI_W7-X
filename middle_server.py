@@ -6,11 +6,11 @@ Other methods can be called from gui.py.
 
 TODO:
 [ ] Data management (incl. analog input)
-[ ] Pumping/filling routines
+[x] Pumping/filling routines
 [ ] Puffing routines and permission
 [ ] Manual control
 [x] Callbacks (.after commands in gui_reuse)
-[ ] Logging
+[x] Logging
 [ ] Safe state
 [ ] Log/print all exceptions
 [ ] 100 ms timeout for network commands esp shutter
@@ -19,24 +19,28 @@ TODO:
 import time
 import datetime
 import xmlrpc.server
+import logging
 import koheron
 import numpy as np
 from bottleneck import move_mean
 from GPI_RP.GPI_RP import GPI_RP
 
 
+# User settings
 RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
-CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
-DEFAULT_PUFF = 0.05  # seconds duration for each puff 
-PRETRIGGER = 10 # seconds between T0 and T1
+LOG_FILE = 'log.txt'
+PUMPED_OUT = 0 # Torr, pressure at which to stop pumping out
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
+SIMULATE_RP = True # create fake data to test pump/puff methods, gui...
+
+# Constants
+CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
+PRETRIGGER = 10 # seconds between T0 and T1
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
-MAX_TORR = 3*760 # Torr, max pressure that user can request
-PUMPED_OUT = 0 # Torr, desired pumped out pressure
-PLENUM_VOLUME = 0.802 # L 
+MAX_FILL = 3*760 # Torr, max pressure that user can request
+PLENUM_VOLUME = 0.802 # L
 READING_HISTORY = 30 # seconds of pressure readings to keep in memory
 MAX_PUFF_DURATION = 2 # seconds max for FV2 to remain open for an individual puff
-SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
 PRESSURE_HZ = 10000 # sampling rate for absolute and differential pressure gauges
 
 
@@ -108,6 +112,7 @@ class RPServer:
         self.targetPressure = None
         self.pumpoutRefill = False
         self.gotFirstQueue = False
+        logging.basicConfig(filename=LOG_FILE, format='%(message)s', level=logging.DEBUG)
         
         # Queues emptied every time the GUI asks for more data to display
         self.GUIData = []
@@ -185,6 +190,7 @@ class RPServer:
         time_string = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
         message = time_string + ' ' + text
         self.messageQueue.append(message)
+        logging.info(message)
         print(message)
     
     def announceServerHealth(self):
@@ -289,7 +295,7 @@ class RPServer:
             pumpOut: (bool) whether to pump to 0 Torr before filling to desired pressure
             exhaust: (bool) whether to exhaust when pressure is > 770 Torr
         '''
-        if desiredPressure < PUMPED_OUT or desiredPressure > MAX_TORR:
+        if desiredPressure < PUMPED_OUT or desiredPressure > MAX_FILL:
             self.addToLog('User requested an invalid pressure')
             return
         # Proceed with raising/lowering the pressure
