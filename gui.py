@@ -121,6 +121,9 @@ class GUI:
         self.state_text = tk.StringVar()
         self.state_text.set('State: middle server not connected')
         state_label = tk.Label(state_frame_line1, textvariable=self.state_text, background=gray)
+        ## Line 2
+        state_frame_line2 = tk.Frame(state_frame, background=gray, pady=5)
+        interrupt_button = ttk.Button(state_frame_line2, text='Interrupt and reset', command=self.handleInterrupt)
         
         # Pump and fill controls
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
@@ -220,6 +223,7 @@ class GUI:
         ### State frame
         state_label.pack(side=tk.LEFT)
         state_frame_line1.pack(side=tk.TOP, fill=tk.X)
+        state_frame_line2.pack(side=tk.TOP, fill=tk.X)
         state_frame.pack(side=tk.TOP, fill=tk.X, pady=0)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Fill controls frame
@@ -449,6 +453,10 @@ class GUI:
 
     def handle_safe_state(self):
         pass
+        
+    def handleInterrupt(self):
+        self.middleServer.setState('idle')
+        self.middleServer.setDefault()
         
     def handle_permission(self, puffNumber):
         '''
