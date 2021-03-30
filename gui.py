@@ -478,7 +478,8 @@ class GUI:
                               'puff_2_start': self.start(2),
                               'puff_2_duration': self.duration(2),
                               'shutter_change_duration': SHUTTER_CHANGE,
-                              'software_t1': SOFTWARE_T1})
+                              'software_t1': SOFTWARE_T1,
+                              'pretrigger': PRETRIGGER})
     
     def plot_puffs(self):
         try:
