@@ -2,6 +2,16 @@
 
 ![](https://user-images.githubusercontent.com/2719004/52680534-b71dbf00-2f06-11e9-89de-4859e10b7c67.png)
 
+## Usage
+
+The "middle server" bridges communication between the gui and RP, and will eventually take care of uploading data to the Archive. Run it with
+
+    python3 middle_server.py
+
+In a separate terminal, you can run
+
+    python3 gui.py
+
 ## Installation
 
 Clone this repo or download the files. Running middle_server.py requires
@@ -19,21 +29,11 @@ The correct addresses must be set in the middle_server.py and gui.py files. midd
 * middle_server.py will need to have RP_HOSTNAME set to the hostname or IP address of the Red Pitaya
 * gui.py must have MIDDLE_SERVER_ADDR set to "hostname_or_ip:50000" where hostname_or_ip is for the machine on which the middle server is running.
 
-## Usage
-
-The "middle server" bridges communication between the gui and RP, and will eventually take care of uploading data to the Archive. Run it with
-
-    python3 middle_server.py
-
-In a separate terminal, you can run
-
-    python3 gui.py
-
 ### Hardware and software T0/T1 triggers
 
-The user can switch between hardware and software T1 modes by modifying the SOFTWARE_T1 variable in gui.py. "Software T1" mode does all slow valve and fast valve actions automatically after the user presses the T0 button. "Hardware T1" mode requires the user to press the T0 button, then supply a hardware T1 signal approximately N seconds after T0, where N is controlled by the PRETRIGGER variable that must be set near the top of middle_server.py and gui.py files. N should be accurate to within less than 1 second.
+The user can switch between hardware and software T1 modes by modifying the SOFTWARE_T1 variable in gui.py. "Software T1" mode does all slow valve and fast valve actions automatically after the user presses the T0 button. "Hardware T1" mode requires the user to press the T0 button, then supply a hardware T1 signal approximately N seconds after T0, where N is controlled by the PRETRIGGER variable that must be set near the top of middle_server.py and gui.py files. The time between software T0 and hardware T1 must be accurate to within less than 1 second.
 
-⚠️ Hardware T1 mode uses a signal on RP pin DIO1_P (H16). If you are doing software T1 triggering, this pin should be kept at a low voltage because a hardware T1 can occur due to the floating voltage.
+⚠️ Hardware T1 mode uses a signal on RP pin DIO1_P (H16). Even if you are doing software T1 triggering, this pin should be kept at a low voltage because a hardware T1 can occur due to the floating voltage.
 
 # FPGA documentation
 
@@ -53,7 +53,7 @@ Red Pitaya outputs are connected to the black box, which contains
     - Fast circuit board 2 (backup, not currently in use)
 - "Card 2": slow valve circuit board
 
-[Circuit schematics](https://drive.google.com/file/d/1h2XiICZbf8ahQjyZW7o4v7BePNzfH2qf/view) for the black box are available.
+For more information, see the [circuit schematics](https://drive.google.com/file/d/1h2XiICZbf8ahQjyZW7o4v7BePNzfH2qf/view) for the black box.
 
 ### Slow valves
 
@@ -96,29 +96,47 @@ Every 0.1 ms, the `data_collector` core on the RP takes two 14-bit readings from
 
 ## Modifying the FPGA code
 
-Requires Vivado 2017.4, which can be downloaded for free from [Xilinx](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html) (you will need to register for an account though). It takes up about 15 GB of space. 
+To compile the FPGA code after any modifications requires Vivado 2017.4, which can be downloaded for free from [Xilinx](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html) (you will need to register for an account though). It takes up about 15 GB of space. 
 
-## Viewing the FPGA block diagram
+### Crucial FPGA code files
+
+In koheron-sdk/instruments/GPI_RP:
+
+* config.yml: general FPGA settings
+* GPI_RP.hpp: C++ code with a main method that runs continuously as soon as the FPGA code is uploaded to the RP, as well as methods to read values or execute actions on the FPGA that can be run on demand
+* GPI_RP.py: python interface to the C++ functions. These methods are exposed to the outside world by a WSGI server running on the RP, allowing remote operation of the FPGA
+* expansion_connector.xdc: declares all input/output pins used by the project
+* block_design.tcl: specifies connections between cores
+* cores/data_collector_v1_0/DataCollect.vhd: required for data collection on absolute and differential pressure gauges
+* cores/outputs_v1_0/outputs.vhd: intermediate block between RP control registers and output pins
+* cores/split_v1_0/split.vhd: required to read analog input pins
+* cores/trig_delay_v1_0/trig_delay.vhd: controls precise timing of fast valve actions
+
+### Viewing the FPGA block diagram
 
 In the koheron-sdk directory, do
 
     make CONFIG=instruments/GPI_RP/config.yml block_design
 
-## Compiling the FPGA code
+Here is the block design as of this writing (March 2021):
+
+![](https://user-images.githubusercontent.com/2719004/113067450-599e6800-918a-11eb-9843-06de65435059.png)
+
+### Compiling the FPGA code
 
 In the koheron-sdk directory, do
 
     make CONFIG=instruments/GPI_RP/config.yml all
 
-## Uploading FPGA code to the Red Pitaya
+### Uploading FPGA code to the Red Pitaya
 
 In the koheron-sdk directory, do
 
-    make CONFIG=instruments/GPI_RP/config.yml HOST=hostname_or_ip_goes_here run
+    make CONFIG=instruments/GPI_RP/config.yml HOST=hostname_or_IP_of_RP run
 
 or if you have the GPI_RP.zip file in your current directory, and you can ping the RP from your computer, simply do 
 
-    HOST=hostname_or_ip_goes_here
+    HOST=hostname_or_IP_of_RP
     NAME=GPI_RP
     INSTRUMENT_ZIP=./GPI_RP.zip
     curl -v -F $(NAME).zip=@$(INSTRUMENT_ZIP) http://$(HOST)/api/instruments/upload
