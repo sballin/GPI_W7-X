@@ -19,12 +19,13 @@ from matplotlib.figure import Figure
 
 
 MIDDLE_SERVER_ADDR = 'http://127.0.0.1:50000'
+SOFTWARE_T1 = True  # send a T1 trigger through software (don't wait for hardware trigger)
+PRETRIGGER = 10 # seconds between T0 and T1 (for T1 timing if SOFTWARE_T1 or for post-shot actions if not SOFTWARE_T1)
 UPDATE_INTERVAL = .5  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 SHUTTER_CHANGE = 1 # seconds for the shutter to finish opening/closing
-PRETRIGGER = 10 # seconds between T0 and T1
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
@@ -476,7 +477,8 @@ class GUI:
                               'puff_2_permission': self.permission_2.get(),
                               'puff_2_start': self.start(2),
                               'puff_2_duration': self.duration(2),
-                              'shutter_change_duration': SHUTTER_CHANGE})
+                              'shutter_change_duration': SHUTTER_CHANGE,
+                              'software_t1': SOFTWARE_T1})
     
     def plot_puffs(self):
         try:

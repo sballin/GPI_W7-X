@@ -9,6 +9,7 @@ use IEEE.numeric_std.all;
 entity delay_trig is
     port (
         adc_clk             : in  std_logic                    ;
+        w7x_t1_hw           : in  std_logic_vector(31 downto 0);
         w7x_t1_ctl          : in  std_logic_vector(31 downto 0);
         fast_delay_1_ctl    : in  std_logic_vector(31 downto 0);
         fast_delay_2_ctl    : in  std_logic_vector(31 downto 0);
@@ -37,7 +38,7 @@ begin
     begin
         if rising_edge(adc_clk) then
             -- When T1 is received, start timers
-            if timer_started = '0' and w7x_t1_ctl /= "00000000000000000000000000000000" then
+            if timer_started = '0' and (w7x_t1_ctl /= "00000000000000000000000000000000" or w7x_t1_hw /= "00000000000000000000000000000000") then
     			timer_started <= '1';
                 
             -- Reset timers when the time comes

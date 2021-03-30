@@ -516,9 +516,12 @@ class RPServer:
         
         self.setState('shot')
         self.addToLog('---T0---')
-        self.addTask(PRETRIGGER, self.addToLog, args=['---T1---'])
         self.addTask(PRETRIGGER - 1 + p['puff_1_start'], self.handleValve, ['V3', 'close'])
-        self.addTask(PRETRIGGER, self.sendT1toRP, [])
+        if p['software_t1']:
+            self.addTask(PRETRIGGER, self.addToLog, args=['Sending software T1'])
+            self.addTask(PRETRIGGER, self.sendT1toRP, [])
+        else:
+            self.addTask(PRETRIGGER, self.addToLog, args=['Hardware T1 should happen now'])
         
         # Calculate when both puffs will be done to queue post-shot actions
         if puff_1_happening: # never False
