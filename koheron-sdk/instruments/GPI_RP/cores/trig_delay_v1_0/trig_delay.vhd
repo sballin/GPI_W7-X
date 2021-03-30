@@ -103,7 +103,7 @@ begin
     Pass_through_5 : process(adc_clk)
     begin
         if rising_edge(adc_clk) then
-            if w7x_t1_ctl /= "00000000000000000000000000000000" then
+            if (w7x_t1_ctl /= "00000000000000000000000000000000" or w7x_t1_hw /= "00000000000000000000000000000000") then
                 w7x_t1_out <= '1';
             else
                 w7x_t1_out <= '0';

@@ -31,7 +31,7 @@ RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
 LOG_FILE = 'log.txt'
 PUMPED_OUT = 0 # Torr, pressure at which to stop pumping out
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
-SIMULATE_RP = True # create fake data to test pump/puff methods, gui...
+SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
 
 # Constants
 CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations

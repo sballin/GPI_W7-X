@@ -114,6 +114,10 @@ class GPI_RP {
         uint32_t get_analog_out() {
             return sts.read<reg::analog_out_sts>();
         }
+        
+        uint32_t get_W7X_permission() {
+            return sts.read<reg::W7X_permission>();
+        }
 
         uint32_t get_abs_gauge() {
             return sts.read<reg::abs_gauge>();

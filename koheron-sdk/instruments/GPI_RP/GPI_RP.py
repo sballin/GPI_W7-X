@@ -104,6 +104,10 @@ class GPI_RP(object):
     @command()
     def get_W7X_permission(self):
         return self.client.recv_uint32()
+        
+    @command()
+    def get_W7X_T1(self):
+        return self.client.recv_uint32()
     
     @command()
     def get_analog_out(self):

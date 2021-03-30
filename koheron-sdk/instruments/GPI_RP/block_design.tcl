@@ -144,9 +144,9 @@ connect_bd_net [get_bd_pins ctl/slow_1_manual] [get_bd_pins sts/slow_1_sts] -bou
 connect_bd_net [get_bd_pins ctl/slow_2_manual] [get_bd_pins sts/slow_2_sts] -boundary_type upper
 connect_bd_net [get_bd_pins ctl/slow_3_manual] [get_bd_pins sts/slow_3_sts] -boundary_type upper
 connect_bd_net [get_bd_pins ctl/slow_4_manual] [get_bd_pins sts/slow_4_sts] -boundary_type upper
-connect_bd_net [get_bd_pins ctl/send_T1] [get_bd_pins sts/W7X_T1] -boundary_type upper
 connect_bd_net [get_bd_pins ctl/fast_manual] [get_bd_pins sts/fast_sts] -boundary_type upper
 connect_bd_net [get_bd_pins ctl/analog_out] [get_bd_pins sts/analog_out_sts] -boundary_type upper
+connect_bd_net [get_bd_pins trig_delay_0/w7x_t1_out] [get_bd_pins sts/W7X_T1]
 
 # Connect to outputs block
 connect_bd_net [get_bd_pins ctl/slow_1_manual] [get_bd_pins outputs_0/slow_1_manual_ctl]
@@ -164,8 +164,8 @@ connect_bd_net [get_bd_pins ctl/fast_delay_2] [get_bd_pins trig_delay_0/fast_del
 connect_bd_net [get_bd_pins ctl/fast_duration_1] [get_bd_pins trig_delay_0/fast_duration_1_ctl]
 connect_bd_net [get_bd_pins ctl/fast_duration_2] [get_bd_pins trig_delay_0/fast_duration_2_ctl]
 connect_bd_net [get_bd_pins ctl/reset_time] [get_bd_pins trig_delay_0/reset_time_ctl]
-connect_bd_net [get_bd_pins ctl/send_T1] [get_bd_pins trig_delay_0/w7x_t1_ctl]
 connect_bd_net [get_bd_ports W7X_T1] [get_bd_pins trig_delay_0/w7x_t1_hw]
+connect_bd_net [get_bd_pins ctl/send_T1] [get_bd_pins trig_delay_0/w7x_t1_ctl]
 
 # FIFO-required connections
 connect_bd_net [get_bd_pins data_collector_0/adc_clk] [get_bd_pins adc_dac/adc_clk]
