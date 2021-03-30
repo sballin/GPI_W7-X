@@ -50,7 +50,7 @@ Red Pitaya outputs are connected to the black box, which contains
 
 - "Card 1"
     - Fast circuit board 1
-    - Fast circuit board 2
+    - Fast circuit board 2 (backup, not currently in use)
 - "Card 2": slow valve circuit board
 
 [Circuit schematics](https://drive.google.com/file/d/1h2XiICZbf8ahQjyZW7o4v7BePNzfH2qf/view) for the black box are available.
@@ -75,10 +75,10 @@ There is only one fast valve, but there are two fast actuating circuits for redu
 ```
 # Fast circuit card 1
 G18 fast_manual        (actuate FV2 at any time without permission)
-H17 fast_permission_1  (required for fast_puff_1 signal to have any effect)
+H17 fast_permission_1  (required for fast_puff_1 signal to pass through black box)
 H18 fast_puff_1        (pulse to open/close)
-K18 fast_permission_2  (required for fast_puff_2 signal to have any effect)
-L15 fast_puff_2        (pulse to open/close at a different time)
+K18 fast_permission_2  (required for fast_puff_2 signal to pass through black box)
+L15 fast_puff_2        (pulse to open/close at a second time)
 
 # Fast circuit card 2
 L17 fast_manual
@@ -98,7 +98,7 @@ Every 0.1 ms, the `data_collector` core on the RP takes two 14-bit readings from
 
 Requires Vivado 2017.4, which can be downloaded for free from [Xilinx](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html) (you will need to register for an account though). It takes up about 15 GB of space. 
 
-## View the FPGA block diagram
+## Viewing the FPGA block diagram
 
 In the koheron-sdk directory, do
 
@@ -110,7 +110,7 @@ In the koheron-sdk directory, do
 
     make CONFIG=instruments/GPI_RP/config.yml all
 
-## Upload FPGA code to Red Pitaya
+## Uploading FPGA code to the Red Pitaya
 
 In the koheron-sdk directory, do
 
