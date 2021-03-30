@@ -46,14 +46,14 @@ The Red Pitaya running the code in koheron-sdk/instruments/GPI_RP has two jobs:
 
 ## Valve control
 
-Red Pitaya outputs are connected to
+Red Pitaya outputs are connected to the black box, which contains
 
 - "Card 1"
     - Fast circuit board 1
     - Fast circuit board 2
 - "Card 2": slow valve circuit board
 
-[Circuit schematics](https://drive.google.com/file/d/1h2XiICZbf8ahQjyZW7o4v7BePNzfH2qf/view) are available.
+[Circuit schematics](https://drive.google.com/file/d/1h2XiICZbf8ahQjyZW7o4v7BePNzfH2qf/view) for the black box are available.
 
 ### Slow valves
 
@@ -96,7 +96,7 @@ Every 0.1 ms, the `data_collector` core on the RP takes two 14-bit readings from
 
 ## Modifying the FPGA code
 
-Requires Vivado 2017.4, which can be downloaded for free (you will need to register for an account though) from [Xilinx](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html).
+Requires Vivado 2017.4, which can be downloaded for free from [Xilinx](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html) (you will need to register for an account though). It takes up about 15 GB of space. 
 
 ## View the FPGA block diagram
 
