@@ -93,23 +93,14 @@ class GUI:
         font = tkinter.font.Font(size=6)
         
         self.shutter_setting_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter setting', fg='white', bg='black', font=font)
-        self.shutter_setting_indicator.bind("<Button-1>", lambda event: self.middle.handleToggleShutter())
         self.shutter_sensor_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter sensor', fg='white', bg='black', font=font)
-        
+    
         self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font)
-        self.FV2_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('FV2'))
-
         self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font)
-        self.V5_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V5'))
-
         self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font)
-        self.V4_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V4'))
-
         self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font)
-        self.V3_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V3'))
-        
         self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font)
-        self.V7_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V7'))
+        self.bindValveButtons()
         
         # Entire column to the right of the live graphs
         controls_frame = tk.Frame(self.root, background=gray)
@@ -142,7 +133,7 @@ class GUI:
         exhaust_check = tk.Checkbutton(fill_controls_line2, variable=self.exhaust, background=gray)
         ## Line 3
         fill_controls_line3 = tk.Frame(fill_controls_frame, background=gray)
-        execute_button = ttk.Button(fill_controls_line3, text='Execute', command=self.handleChangePressure)
+        self.execute_button = ttk.Button(fill_controls_line3, text='Execute', command=self.handleChangePressure)
 
         # Puff controls
         ## Line 1
@@ -168,7 +159,7 @@ class GUI:
         GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, variable=self.GPI_safe_status)
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
-        GPI_T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handle_T0)        
+        self.T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handleT0)        
 
         self.fig = Figure(figsize=(3.5, 6), dpi=100, facecolor=gray)
         self.fig.subplots_adjust(left=0.3, right=0.7, top=0.925, hspace=0.5)
@@ -229,7 +220,7 @@ class GUI:
         ### Fill controls frame
         desired_pressure_label.pack(side=tk.LEFT)
         self.desired_pressure_entry.pack(side=tk.LEFT)
-        execute_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.execute_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         pump_out_label.pack(side=tk.LEFT, pady=5)
         pump_out_check.pack(side=tk.LEFT, pady=5, padx=5)
         exhaust_label.pack(side=tk.LEFT, pady=5)
@@ -259,7 +250,7 @@ class GUI:
         GPI_safe_state_check.pack(side=tk.LEFT, padx=5)
         permission_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ### Action controls frame
-        GPI_T0_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.T0_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         action_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Log
@@ -469,7 +460,7 @@ class GUI:
         desiredPressure = float(self.desired_pressure_entry.get().strip())
         self.middle.changePressure(desiredPressure, self.pumpOut.get(), self.exhaust.get())
         
-    def handle_T0(self):
+    def handleT0(self):
         Tdone = self.middle.handleT0({'puff_1_permission': self.permission_1.get(),
                                       'puff_1_start': self.start(1),
                                       'puff_1_duration': self.duration(1),
@@ -479,10 +470,33 @@ class GUI:
                                       'shutter_change_duration': SHUTTER_CHANGE,
                                       'software_t1': SOFTWARE_T1,
                                       'pretrigger': PRETRIGGER})
+        # If a nonzero value is returned, settings were accepted and shot is happening for Tdone seconds
         if Tdone != 0:
-            self.root.after(int((Tdone+2)*1000), self.plot_puffs)
-    
-    def plot_puffs(self):
+            self.disableButtons()
+            self.root.after(int((Tdone)*1000), self.enableButtons)
+            self.root.after(int((Tdone+1)*1000), self.plotPuffs)
+            
+    def bindValveButtons(self):
+        self.shutter_setting_indicator.bind("<Button-1>", lambda event: self.middle.handleToggleShutter())
+        self.FV2_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('FV2'))
+        self.V5_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V5'))
+        self.V4_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V4'))
+        self.V3_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V3'))
+        self.V7_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V7'))        
+            
+    def enableButtons(self):
+        for button in [self.T0_button, self.execute_button]:
+            button['state'] = 'normal'
+        self.bindValveButtons()
+        
+    def disableButtons(self):
+        for button in [self.T0_button, self.execute_button]:
+            button['state'] = 'disabled'
+        for button in [self.shutter_setting_indicator, self.FV2_indicator, self.V5_indicator, 
+                       self.V4_indicator, self.V3_indicator, self.V7_indicator]:
+            button.unbind('<Button-1>')
+        
+    def plotPuffs(self):
         # Get shot data from middle server
         try:
             T0, t, dp = self.middle.getLastShotData()
