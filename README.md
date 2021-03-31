@@ -4,30 +4,32 @@
 
 ## Usage
 
-The "middle server" bridges communication between the gui and RP, and will eventually take care of uploading data to the Archive. Run it with
+The "middle server" bridges communication between the gui and RP, and will eventually take care of uploading data to the Archive. The middle server and the GUI can be run on different computers or the same computer. 
+
+You can run the middle server with
 
     python3 middle_server.py
 
-In a separate terminal, you can run
+In a separate terminal, you can run the GUI with
 
     python3 gui.py
 
 ## Installation
 
-Clone this repo or download the files. Running middle_server.py requires
+Clone this repo or download the files. middle_server.py and gui.py each depend on other files in the repo.
+
+Running middle_server.py requires
 
     pip3 install bottleneck
-
-and the presence of the koheron and koheron-sdk directories (avoid making it use the pip-installed koheron library).
 
 Running gui.py requires
 
     pip3 install pillow numpy scipy matplotlib
 
-The correct addresses must be set in the middle_server.py and gui.py files. middle_server.py and gui.py can be run on different computers or the same computer:
+The correct addresses must be set in the middle_server.py and gui.py files:
 
-* middle_server.py will need to have RP_HOSTNAME set to the hostname or IP address of the Red Pitaya
-* gui.py must have MIDDLE_SERVER_ADDR set to "hostname_or_ip:50000" where hostname_or_ip is for the machine on which the middle server is running.
+* middle_server.py must have RP_HOSTNAME set to the hostname or IP address of the Red Pitaya
+* gui.py must have MIDDLE_SERVER_ADDR set to "hostname_or_ip:50000" where hostname_or_ip is for the machine on which the middle server is running
 
 ### Hardware and software T0/T1 triggers
 
@@ -107,7 +109,7 @@ In koheron-sdk/instruments/GPI_RP:
 * GPI_RP.py: python interface to the C++ functions. These methods are exposed to the outside world by a WSGI server running on the RP, allowing remote operation of the FPGA
 * expansion_connector.xdc: declares all input/output pins used by the project
 * block_design.tcl: specifies connections between cores
-* cores/data_collector_v1_0/DataCollect.vhd: required for data collection on absolute and differential pressure gauges
+* cores/data_collector_v1_0/DataCollect.vhd: required for data collection from absolute and differential pressure gauges
 * cores/outputs_v1_0/outputs.vhd: intermediate block between RP control registers and output pins
 * cores/split_v1_0/split.vhd: required to read analog input pins
 * cores/trig_delay_v1_0/trig_delay.vhd: controls precise timing of fast valve actions
