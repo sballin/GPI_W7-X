@@ -59,6 +59,9 @@ class GUI:
         self.absPressures = []
         self.diffPressures = []
         
+        # Used to cancel data display if a shot is interrupted
+        self.afterShotGetData = None
+        
         self.setupGUI(root)
         self._add_to_log('GUI initialized')
         
@@ -114,7 +117,7 @@ class GUI:
         state_label = tk.Label(state_frame_line1, textvariable=self.state_text, background=gray)
         ## Line 2
         state_frame_line2 = tk.Frame(state_frame, background=gray, pady=5)
-        interrupt_button = ttk.Button(state_frame_line2, text='Interrupt and reset', command=self.handleInterrupt)
+        interrupt_button = ttk.Button(state_frame_line2, text='Interrupt action', command=self.handleInterrupt)
         
         # Pump and fill controls
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
@@ -214,6 +217,7 @@ class GUI:
         ### State frame
         state_label.pack(side=tk.LEFT)
         state_frame_line1.pack(side=tk.TOP, fill=tk.X)
+        interrupt_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         state_frame_line2.pack(side=tk.TOP, fill=tk.X)
         state_frame.pack(side=tk.TOP, fill=tk.X, pady=0)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
@@ -446,8 +450,9 @@ class GUI:
         pass
         
     def handleInterrupt(self):
-        self.middleServer.setState('idle')
-        self.middleServer.setDefault()
+        self.middle.interrupt()
+        self.enableButtons()
+        self.root.after_cancel(self.afterShotGetData)
         
     def handle_permission(self, puffNumber):
         '''
@@ -474,7 +479,7 @@ class GUI:
         if Tdone != 0:
             self.disableButtons()
             self.root.after(int((Tdone)*1000), self.enableButtons)
-            self.root.after(int((Tdone+1)*1000), self.plotPuffs)
+            self.afterShotGetData = self.root.after(int((Tdone+1)*1000), self.plotPuffs)
             
     def bindValveButtons(self):
         self.shutter_setting_indicator.bind("<Button-1>", lambda event: self.middle.handleToggleShutter())
@@ -499,17 +504,17 @@ class GUI:
     def plotPuffs(self):
         # Get shot data from middle server
         try:
-            T0, t, dp = self.middle.getLastShotData()
+            T1, t, dp = self.middle.getLastShotData()
         except Exception as e:
             self._add_to_log('Get last shot data failed: %s' % e)
             return
             
         # Save shot data to file
         try:
-            t = np.array(t)-T0
+            t = np.array(t)-T1
             if not os.path.isdir(SAVE_FOLDER):
                 os.mkdir(SAVE_FOLDER)
-            savepath = SAVE_FOLDER + '/diff_pressure_%d.npy' % int(T0)
+            savepath = SAVE_FOLDER + '/diff_pressure_%d.npy' % int(T1)
             np.save(savepath, [t, dp])
             self._add_to_log('Saved shot data to %s' % savepath)
         except Exception as e:

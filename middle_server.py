@@ -25,6 +25,7 @@ LOG_FILE = 'log.txt'
 PUMPED_OUT = 0 # Torr, pressure at which to stop pumping out
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
+ANNOUNCE_HEALTH = False # regularly log info about middle server health
 
 # Less commonly changed user settings
 CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
@@ -120,7 +121,7 @@ class RPServer:
         # Keep track of server health
         self.mainloopTimes = []
         # Variables to record times to return appropriate data to GUI post-puff
-        self.lastT0 = None
+        self.lastT1 = None
         self.lastTdone = None
         # Variable used to store time and pressure data from the latest shot
         self.lastShotData = None
@@ -138,7 +139,8 @@ class RPServer:
         self.addToLog('Server setting default state')
         self.setDefault()
         
-        self.addTask(10, self.announceServerHealth, [])
+        if ANNOUNCE_HEALTH:
+            self.addTask(10, self.announceServerHealth, [])
         
         self.mainloop()
         
@@ -183,9 +185,12 @@ class RPServer:
         '''
         self.taskQueue.append((time.time()+execTime, function, args))
         
+    def clearTasks(self):
+        self.taskQueue = []
+        
     def addToLog(self, text):
         time_string = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-        message = time_string + ' ' + text
+        message = 'MS ' + time_string + ' ' + text
         self.messageQueue.append(message)
         logging.info(message)
         print(message)
@@ -199,6 +204,12 @@ class RPServer:
     def setState(self, state):
         self.addToLog('Setting middle server state = ' + state)
         self.state = state
+        
+    def interrupt(self):
+        self.clearTasks()
+        self.addToLog('Manual interrupt received')
+        self.setState('idle')
+        self.setDefault()
             
     def init(self):
         pass
@@ -495,11 +506,11 @@ class RPServer:
         self.setState('idle')
         
         # Save shot data
-        start = find_nearest(np.array(self.pressureTimes), self.lastT0)
+        start = find_nearest(np.array(self.pressureTimes), self.lastT1)
         end = find_nearest(np.array(self.pressureTimes), self.lastTdone)
-        t = self.pressureTimes[start:end].tolist()
-        dp = self.diffPressures[start:end]
-        self.lastShotData = [int(self.lastT0), t, dp]
+        t = self.pressureTimes[start:end].tolist().copy()
+        dp = self.diffPressures[start:end].copy()
+        self.lastShotData = [int(self.lastT1), t, dp]
         
     def getLastShotData(self):
         return self.lastShotData
@@ -507,20 +518,34 @@ class RPServer:
     def handleT0(self, p):
         valid_start_1 = p['puff_1_start'] is not None and p['puff_1_start'] >= 0
         valid_start_2 = p['puff_2_start'] is not None and p['puff_2_start'] >= 0
-        valid_duration_1 = p['puff_1_duration'] is not None and 0 < p['puff_1_duration'] < MAX_PUFF_DURATION
-        valid_duration_2 = p['puff_2_duration'] is not None and 0 < p['puff_2_duration'] < MAX_PUFF_DURATION
+        valid_duration_1 = p['puff_1_duration'] is not None and 0 < p['puff_1_duration'] <= MAX_PUFF_DURATION
+        valid_duration_2 = p['puff_2_duration'] is not None and 0 < p['puff_2_duration'] <= MAX_PUFF_DURATION
         puff_1_happening = p['puff_1_permission'] and valid_start_1 and valid_duration_1
         puff_2_happening = p['puff_2_permission'] and valid_start_2 and valid_duration_2
         pretrigger = p['pretrigger']
         # Puff 1 should always be used
+        quit = False
         if not puff_1_happening:
-            self.addToLog('Error: puff 1 is either unused or invalid')
-            return 0
+            if p['puff_1_start'] is None or p['puff_1_start'] < 0:
+                self.addToLog('Error: puff 1 has invalid start')
+            if p['puff_1_duration'] is None or p['puff_1_duration'] <= 0 or p['puff_1_duration'] > MAX_PUFF_DURATION:
+                self.addToLog('Error: puff 1 has invalid duration')    
+            if not p['puff_1_permission']:
+                self.addToLog('Error: puff 1 must be used')
+            quit = True
+        if p['puff_2_permission'] and not puff_2_happening:
+            if p['puff_2_start'] is None or p['puff_2_start'] < 0:
+                self.addToLog('Error: puff 2 has invalid start')
+            if p['puff_2_duration'] is None or p['puff_2_duration'] <= 0 or p['puff_2_duration'] > MAX_PUFF_DURATION:
+                self.addToLog('Error: puff 2 has invalid duration')    
+            quit = True
         # Puff 1 should never bleed into puff 2
         if puff_1_happening and puff_2_happening:
             if not p['puff_1_start'] + p['puff_1_duration'] < p['puff_2_start']:
-                self.addToLog('Error: puff 1 and puff 2 overlap')
-                return 0
+                self.addToLog('Error: puff 1 and puff 2 would overlap')
+                quit = True
+        if quit:
+            return 0
         
         self.setState('shot')
         self.addToLog('---T0---')
@@ -554,7 +579,7 @@ class RPServer:
         # Reset puff countup timer after both puffs done (not sure this is working)
         self.RPKoheron.reset_time(int(bothPuffsDone*1000))
         # Variables to record times to return appropriate data to GUI post-puff
-        self.lastT0 = time.time()
+        self.lastT1 = time.time()+pretrigger
         self.lastTdone = time.time()+pretrigger+bothPuffsDone+2
         
         # Send fast puff timing info to FPGA 
