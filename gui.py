@@ -95,14 +95,14 @@ class GUI:
 
         font = tkinter.font.Font(size=6)
         
-        self.shutter_setting_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter setting', fg='white', bg='black', font=font)
+        self.shutter_setting_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter setting', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
         self.shutter_sensor_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter sensor', fg='white', bg='black', font=font)
     
-        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font)
-        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font)
-        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font)
-        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font)
-        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font)
+        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
         self.bindValveButtons()
         
         # Entire column to the right of the live graphs
@@ -205,7 +205,7 @@ class GUI:
         self.V3_indicator.place(relx=.476, rely=.562, relwidth=.034, relheight=.038)
         self.V4_indicator.place(relx=.092, rely=.395, relwidth=.036, relheight=.038)
         self.V5_indicator.place(relx=.364, rely=.315, relwidth=.047, relheight=.026)
-        self.V7_indicator.place(relx=.204, rely=.277, relwidth=.03, relheight=.028)
+        self.V7_indicator.place(relx=.200, rely=.277, relwidth=.04, relheight=.028)
         self.FV2_indicator.place(relx=.635, rely=.067, relwidth=.05, relheight=.026)
         self.shutter_setting_indicator.place(relx=.817, rely=.062, relwidth=.2, relheight=.026)
         self.shutter_sensor_indicator.place(relx=.817, rely=.092, relwidth=.2, relheight=.026)
@@ -493,6 +493,9 @@ class GUI:
         for button in [self.T0_button, self.execute_button]:
             button['state'] = 'normal'
         self.bindValveButtons()
+        for button in [self.shutter_setting_indicator, self.FV2_indicator, self.V5_indicator, 
+                       self.V4_indicator, self.V3_indicator, self.V7_indicator]:
+            button.configure(relief=tk.RAISED, cursor='hand1')
         
     def disableButtons(self):
         for button in [self.T0_button, self.execute_button]:
@@ -500,6 +503,7 @@ class GUI:
         for button in [self.shutter_setting_indicator, self.FV2_indicator, self.V5_indicator, 
                        self.V4_indicator, self.V3_indicator, self.V7_indicator]:
             button.unbind('<Button-1>')
+            button.configure(relief=tk.FLAT, cursor='arrow')
         
     def plotPuffs(self):
         # Get shot data from middle server
