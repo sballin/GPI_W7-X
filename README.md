@@ -16,17 +16,11 @@ In a separate terminal, you can run the GUI with
 
 ## Installation
 
-Clone this repo or download the files. middle_server.py and gui.py each depend on other files in the repo.
+Clone this repo or download the files. middle_server.py and gui.py each depend on other files in the repo. Install the required python packages with
 
-Running middle_server.py requires
+    pip3 install -r requirements.txt
 
-    pip3 install bottleneck
-
-Running gui.py requires
-
-    pip3 install pillow numpy scipy matplotlib
-
-The correct addresses must be set in the middle_server.py and gui.py files:
+Set the correct addresses in middle_server.py and gui.py:
 
 * middle_server.py must have RP_HOSTNAME set to the hostname or IP address of the Red Pitaya
 * gui.py must have MIDDLE_SERVER_ADDR set to "hostname_or_ip:50000" where hostname_or_ip is for the machine on which the middle server is running
@@ -106,7 +100,9 @@ In koheron-sdk/instruments/GPI_RP:
 
 * [config.yml](koheron-sdk/instruments/GPI_RP/config.yml): general FPGA settings
 * [GPI_RP.hpp](koheron-sdk/instruments/GPI_RP/GPI_RP.hpp): C++ code with a main method that runs continuously as soon as the FPGA code is uploaded to the RP, as well as methods to read values or execute actions on the FPGA that can be run on demand
+    * Runs on RP as /tmp/live-instrument/serverd
 * [GPI_RP.py](koheron-sdk/instruments/GPI_RP/GPI_RP.py): python interface to the C++ functions. These methods are exposed to the outside world by a WSGI server running on the RP, allowing remote operation of the FPGA
+    * Runs on RP as /usr/local/bin/uwsgi
 * [expansion_connector.xdc](koheron-sdk/instruments/GPI_RP/expansion_connector.xdc): declares all input/output pins used by the project
 * [block_design.tcl](koheron-sdk/instruments/GPI_RP/block_design.tcl): specifies connections between cores
 * [cores/data_collector_v1_0/DataCollect.vhd](koheron-sdk/instruments/GPI_RP/cores/data_collector_v1_0/DataCollect.vhd): required for data collection from absolute and differential pressure gauges
@@ -130,7 +126,7 @@ In the koheron-sdk directory, do
 
     make CONFIG=instruments/GPI_RP/config.yml all
 
-### Uploading FPGA code to the Red Pitaya
+### Uploading FPGA code to the RP
 
 In the koheron-sdk directory, do
 
@@ -143,3 +139,7 @@ or if you have the GPI_RP.zip file in your current directory, and you can ping t
     INSTRUMENT_ZIP=./GPI_RP.zip
     curl -v -F $(NAME).zip=@$(INSTRUMENT_ZIP) http://$(HOST)/api/instruments/upload
     curl http://$(HOST)/api/instruments/run/$(NAME)
+
+### Other RP configuration details
+
+In /usr/lib/arm-linux-gnueabihf on the RP, symlink libstdc++.so.6 has been changed to point at libstdc++.so.6.0.22 (instead of libstdc++.so.6.0.21 originally), copied from Xilinx/SDK/2017.4/gnu/aarch32/lin/gcc-arm-linux-gnueabi/arm-linux-gnueabihf/lib

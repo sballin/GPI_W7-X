@@ -1,16 +1,9 @@
 '''
 Server for valve control and data acquisition in GPI system at W7-X.
 
-Methods starting with _ should only be called in middle_server.py.
-Other methods can be called from gui.py.
-
 TODO:
-[ ] Data management (incl. analog input)
-[x] Pumping/filling routines
-[ ] Puffing routines and permission
+[ ] W7X permission respecting
 [ ] Manual control
-[x] Callbacks (.after commands in gui_reuse)
-[x] Logging
 [ ] Safe state
 [ ] Log/print all exceptions
 [ ] 100 ms timeout for network commands esp shutter
@@ -33,7 +26,7 @@ PUMPED_OUT = 0 # Torr, pressure at which to stop pumping out
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
 
-# Constants
+# Less commonly changed user settings
 CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 MAX_FILL = 3*760 # Torr, max pressure that user can request

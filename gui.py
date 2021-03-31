@@ -200,7 +200,7 @@ class GUI:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
         
-        # I use this to figure out valve label positions
+        # Uncomment to see click x/y positions, useful for interface building
         # def click_location(event):
         #     print('%.4f, %.4f' % (event.x/469, event.y/600)) # divide by image dimensions
         # self.root.bind('<Button-1>', click_location)
@@ -502,7 +502,7 @@ class GUI:
             self._add_to_log('Save pressure data failed: %s' % e)
             return
             
-        # Launch script to plot data
+        # Launch script to plot data using the same python executable that's running this script
         subprocess.Popen([sys.executable, 'plot_shot.py', savepath])
 
  
