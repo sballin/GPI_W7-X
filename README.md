@@ -111,8 +111,8 @@ In koheron-sdk/instruments/GPI_RP:
 * [block_design.tcl](koheron-sdk/instruments/GPI_RP/block_design.tcl): specifies connections between cores
 * [cores/data_collector_v1_0/DataCollect.vhd](koheron-sdk/instruments/GPI_RP/cores/data_collector_v1_0/DataCollect.vhd): required for data collection from absolute and differential pressure gauges
 * [cores/outputs_v1_0/outputs.vhd](koheron-sdk/instruments/GPI_RP/cores/outputs_v1_0/outputs.vhd): intermediate block between RP control registers and output pins
-* [cores/split_v1_0/split.vhd](koheron-sdk/instruments/GPI_RP/cores/outputs_v1_0/outputs.vhd): required to read analog input pins
-* [cores/trig_delay_v1_0/trig_delay.vhd](koheron-sdk/instruments/GPI_RP/cores/outputs_v1_0/outputs.vhd): controls precise timing of fast valve actions
+* [cores/split_v1_0/split.vhd](koheron-sdk/instruments/GPI_RP/cores/split_v1_0/split.vhd): required to read analog input pins
+* [cores/trig_delay_v1_0/trig_delay.vhd](koheron-sdk/instruments/GPI_RP/cores/trig_delay_v1_0/trig_delay.vhd): controls precise timing of fast valve actions
 
 ### Viewing the FPGA block diagram
 
