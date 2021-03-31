@@ -512,21 +512,21 @@ class RPServer:
         return self.lastShotData
         
     def handleT0(self, p):
-        valid_start_1 = p['puff_1_start'] and p['puff_1_start'] >= 0
-        valid_start_2 = p['puff_2_start'] and p['puff_2_start'] >= 0
-        valid_duration_1 = p['puff_1_duration'] and 0 < p['puff_1_duration'] < MAX_PUFF_DURATION
-        valid_duration_2 = p['puff_2_duration'] and 0 < p['puff_2_duration'] < MAX_PUFF_DURATION
+        valid_start_1 = p['puff_1_start'] is not None and p['puff_1_start'] >= 0
+        valid_start_2 = p['puff_2_start'] is not None and p['puff_2_start'] >= 0
+        valid_duration_1 = p['puff_1_duration'] is not None and 0 < p['puff_1_duration'] < MAX_PUFF_DURATION
+        valid_duration_2 = p['puff_2_duration'] is not None and 0 < p['puff_2_duration'] < MAX_PUFF_DURATION
         puff_1_happening = p['puff_1_permission'] and valid_start_1 and valid_duration_1
         puff_2_happening = p['puff_2_permission'] and valid_start_2 and valid_duration_2
         pretrigger = p['pretrigger']
         # Puff 1 should always be used
         if not puff_1_happening:
-            self.addToLog('Error: puff 1 must be used')
+            self.addToLog('Error: puff 1 is either unused or invalid')
             return 0
         # Puff 1 should never bleed into puff 2
         if puff_1_happening and puff_2_happening:
             if not p['puff_1_start'] + p['puff_1_duration'] < p['puff_2_start']:
-                self.addToLog('Error: puff 1 would bleed into puff 2')
+                self.addToLog('Error: puff 1 and puff 2 overlap')
                 return 0
         
         self.setState('shot')
