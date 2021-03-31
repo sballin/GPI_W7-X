@@ -168,7 +168,8 @@ class RPServer:
             # if self.state == 'idle':
             #     time.sleep(0.05)
             
-            self.mainloopTimes.append(time.time()-now)
+            if ANNOUNCE_HEALTH:
+                self.mainloopTimes.append(time.time()-now)
             
     def handleTasks(self):
         '''
