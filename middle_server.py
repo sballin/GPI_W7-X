@@ -510,7 +510,7 @@ class RPServer:
         end = find_nearest(np.array(self.pressureTimes), self.lastTdone)
         t = self.pressureTimes[start:end].tolist().copy()
         dp = self.diffPressures[start:end].copy()
-        self.lastShotData = [int(self.lastT1), t, dp]
+        self.lastShotData = [self.lastT1, t, dp]
         
     def getLastShotData(self):
         return self.lastShotData
