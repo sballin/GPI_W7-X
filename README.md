@@ -104,15 +104,15 @@ To compile the FPGA code after any modifications requires Vivado 2017.4, which c
 
 In koheron-sdk/instruments/GPI_RP:
 
-* config.yml: general FPGA settings
-* GPI_RP.hpp: C++ code with a main method that runs continuously as soon as the FPGA code is uploaded to the RP, as well as methods to read values or execute actions on the FPGA that can be run on demand
-* GPI_RP.py: python interface to the C++ functions. These methods are exposed to the outside world by a WSGI server running on the RP, allowing remote operation of the FPGA
-* expansion_connector.xdc: declares all input/output pins used by the project
-* block_design.tcl: specifies connections between cores
-* cores/data_collector_v1_0/DataCollect.vhd: required for data collection from absolute and differential pressure gauges
-* cores/outputs_v1_0/outputs.vhd: intermediate block between RP control registers and output pins
-* cores/split_v1_0/split.vhd: required to read analog input pins
-* cores/trig_delay_v1_0/trig_delay.vhd: controls precise timing of fast valve actions
+* __config.yml:__ general FPGA settings
+* __GPI_RP.hpp:__ C++ code with a main method that runs continuously as soon as the FPGA code is uploaded to the RP, as well as methods to read values or execute actions on the FPGA that can be run on demand
+* __GPI_RP.py:__ python interface to the C++ functions. These methods are exposed to the outside world by a WSGI server running on the RP, allowing remote operation of the FPGA
+* __expansion_connector.xdc:__ declares all input/output pins used by the project
+* __block_design.tcl:__ specifies connections between cores
+* __cores/data_collector_v1_0/DataCollect.vhd:__ required for data collection from absolute and differential pressure gauges
+* __cores/outputs_v1_0/outputs.vhd:__ intermediate block between RP control registers and output pins
+* __cores/split_v1_0/split.vhd:__ required to read analog input pins
+* __cores/trig_delay_v1_0/trig_delay.vhd:__ controls precise timing of fast valve actions
 
 ### Viewing the FPGA block diagram
 
