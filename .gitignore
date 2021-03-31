@@ -9,3 +9,5 @@ tmp/
 *.str
 *.jou
 *.zip
+*.npy
+*.png

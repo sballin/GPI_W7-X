@@ -126,6 +126,11 @@ class RPServer:
         self.diffPressures = []
         # Keep track of server health
         self.mainloopTimes = []
+        # Variables to record times to return appropriate data to GUI post-puff
+        self.lastT0 = None
+        self.lastTdone = None
+        # Variable used to store time and pressure data from the latest shot
+        self.lastShotData = None
         
         # Create new xmlrpc server and register RPServer with it to expose RPServer functions
         address = ('127.0.0.1', 50000)
@@ -496,6 +501,16 @@ class RPServer:
         self.handleValve('V3', command='open')
         self.setState('idle')
         
+        # Save shot data
+        start = find_nearest(np.array(self.pressureTimes), self.lastT0)
+        end = find_nearest(np.array(self.pressureTimes), self.lastTdone)
+        t = self.pressureTimes[start:end].tolist()
+        dp = self.diffPressures[start:end]
+        self.lastShotData = [int(self.lastT0), t, dp]
+        
+    def getLastShotData(self):
+        return self.lastShotData
+        
     def handleT0(self, p):
         valid_start_1 = p['puff_1_start'] and p['puff_1_start'] >= 0
         valid_start_2 = p['puff_2_start'] and p['puff_2_start'] >= 0
@@ -507,12 +522,12 @@ class RPServer:
         # Puff 1 should always be used
         if not puff_1_happening:
             self.addToLog('Error: puff 1 must be used')
-            return
+            return 0
         # Puff 1 should never bleed into puff 2
         if puff_1_happening and puff_2_happening:
             if not p['puff_1_start'] + p['puff_1_duration'] < p['puff_2_start']:
                 self.addToLog('Error: puff 1 would bleed into puff 2')
-                return
+                return 0
         
         self.setState('shot')
         self.addToLog('---T0---')
@@ -541,9 +556,13 @@ class RPServer:
             if p['puff_2_start'] - puff_1_done > 2*p['shutter_change_duration'] + 3:
                 self.addTask(pretrigger+puff_1_done+1, self.setShutter, ['close'])
                 self.addTask(pretrigger+p['puff_2_start']-p['shutter_change_duration'], self.setShutter, ['open'])
-        # Open V3 and set state 'idle' after both puffs are done
+        # Open V3, set state 'idle', and save pressure data after both puffs are done
         self.addTask(pretrigger + bothPuffsDone + 2, self.postShotActions, [])
-        self.RPKoheron.reset_time(int(bothPuffsDone*1000)) # reset puff countup timer
+        # Reset puff countup timer after both puffs done (not sure this is working)
+        self.RPKoheron.reset_time(int(bothPuffsDone*1000))
+        # Variables to record times to return appropriate data to GUI post-puff
+        self.lastT0 = time.time()
+        self.lastTdone = time.time()+pretrigger+bothPuffsDone+2
         
         # Send fast puff timing info to FPGA 
         if puff_1_happening: # never False
@@ -560,6 +579,9 @@ class RPServer:
         else:
             self.RPKoheron.set_fast_delay_2(2+int(bothPuffsDone*1000))
             self.RPKoheron.set_fast_duration_2(2+int(bothPuffsDone*1000))
+        
+        # Return num. seconds after which it is safe for GUI to ask for puff pressure data
+        return pretrigger+bothPuffsDone+2
 
 
 if __name__ == '__main__':

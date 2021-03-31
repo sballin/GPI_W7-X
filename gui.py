@@ -2,6 +2,9 @@
 GUI for valve control in GPI system at W7-X. Original code by Kevin Tang.
 '''
 
+import sys
+import os
+import subprocess
 import tkinter as tk
 import tkinter.font
 from tkinter import ttk
@@ -10,17 +13,15 @@ import time
 import datetime
 from xmlrpc.client import ServerProxy
 import numpy as np
-from scipy.interpolate import interp1d
-from scipy.misc import derivative
-from scipy.signal import medfilt
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
 MIDDLE_SERVER_ADDR = 'http://127.0.0.1:50000'
+SAVE_FOLDER = 'shot_data' # for puff pressure data
 SOFTWARE_T1 = True  # send a T1 trigger through software (don't wait for hardware trigger)
-PRETRIGGER = 10 # seconds between T0 and T1 (for T1 timing if SOFTWARE_T1 or for post-shot actions if not SOFTWARE_T1)
+PRETRIGGER = 5 # seconds between T0 and T1 (for T1 timing if SOFTWARE_T1 or for post-shot actions if not SOFTWARE_T1)
 UPDATE_INTERVAL = .5  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 PLOT_TIME_RANGE = 30 # seconds of history shown in plots
@@ -29,9 +30,7 @@ SHUTTER_CHANGE = 1 # seconds for the shutter to finish opening/closing
 FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 PUMPED_OUT = 0 # Torr, desired pumped out pressure
-PLENUM_VOLUME = 0.802 # L 
 TORR_TO_BAR = 0.00133322
-SAVE_FOLDER = '/usr/local/cmod/codes/spectroscopy/gpi/W7X/diff_pressures/' # for puff pressure data
     
     
 def find_nearest(array, value):
@@ -471,43 +470,40 @@ class GUI:
         self.middle.changePressure(desiredPressure, self.pumpOut.get(), self.exhaust.get())
         
     def handle_T0(self):
-        self.middle.handleT0({'puff_1_permission': self.permission_1.get(),
-                              'puff_1_start': self.start(1),
-                              'puff_1_duration': self.duration(1),
-                              'puff_2_permission': self.permission_2.get(),
-                              'puff_2_start': self.start(2),
-                              'puff_2_duration': self.duration(2),
-                              'shutter_change_duration': SHUTTER_CHANGE,
-                              'software_t1': SOFTWARE_T1,
-                              'pretrigger': PRETRIGGER})
+        Tdone = self.middle.handleT0({'puff_1_permission': self.permission_1.get(),
+                                      'puff_1_start': self.start(1),
+                                      'puff_1_duration': self.duration(1),
+                                      'puff_2_permission': self.permission_2.get(),
+                                      'puff_2_start': self.start(2),
+                                      'puff_2_duration': self.duration(2),
+                                      'shutter_change_duration': SHUTTER_CHANGE,
+                                      'software_t1': SOFTWARE_T1,
+                                      'pretrigger': PRETRIGGER})
+        if Tdone != 0:
+            self.root.after(int((Tdone+2)*1000), self.plot_puffs)
     
     def plot_puffs(self):
+        # Get shot data from middle server
         try:
-            times = np.array(self.pressure_times) - (self.T0 + PRETRIGGER)
-            times, pressures = zip(*[(_t, _d) for (_t, _d) in zip(times, self.diff_pressures) if _t > -1])
-            np.save(SAVE_FOLDER + 'diff_pressure_%d.npy' % int(self.T0), [times, pressures])
-            plt.figure()
-            plt.suptitle(int(self.T0))
-            plt.subplot(211)
-            pressures = medfilt(pressures, 11)
-            plt.plot(times, pressures)
-            plt.ylabel('Diff. pressure (Torr)')
-            plt.subplot(212)
-            f = interp1d(times, pressures, kind='linear')
-            newtimes = np.arange(times[0], times[-1], 0.0005)
-            dp_coarse = [PLENUM_VOLUME*derivative(f, ti, dx=.02) for ti in newtimes[100:-100]]
-            dp_fine = [PLENUM_VOLUME*derivative(f, ti, dx=.005) for ti in newtimes[100:-100]]
-            plt.plot(newtimes[100:-100], medfilt(dp_fine,11))
-            plt.plot(newtimes[100:-100], medfilt(dp_coarse,11))
-            plt.xlabel('t-T1 (s)')
-            plt.ylabel('Flow rate (Torr-L/sec)')
-            plt.savefig(SAVE_FOLDER + 'diff_pressure_%d.png' % int(self.T0))
-            plt.ion() # to continue execution after closing window
-            plt.show()
-            plt.pause(0.001) # to continue execution after closing window
-            self._add_to_log('Saved data with suffix %d' % int(self.T0))
+            T0, t, dp = self.middle.getLastShotData()
+        except Exception as e:
+            self._add_to_log('Get last shot data failed: %s' % e)
+            return
+            
+        # Save shot data to file
+        try:
+            t = np.array(t)-T0
+            if not os.path.isdir(SAVE_FOLDER):
+                os.mkdir(SAVE_FOLDER)
+            savepath = SAVE_FOLDER + '/diff_pressure_%d.npy' % int(T0)
+            np.save(savepath, [t, dp])
+            self._add_to_log('Saved shot data to %s' % savepath)
         except Exception as e:
             self._add_to_log('Save pressure data failed: %s' % e)
+            return
+            
+        # Launch script to plot data
+        subprocess.Popen([sys.executable, 'plot_shot.py', savepath])
 
  
 if __name__ == '__main__':
