@@ -31,10 +31,9 @@ ANNOUNCE_HEALTH = False # regularly log info about middle server health
 CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
 MAX_FILL = 3*760 # Torr, max pressure that user can request
-PLENUM_VOLUME = 0.802 # L
 READING_HISTORY = 30 # seconds of pressure readings to keep in memory
 MAX_PUFF_DURATION = 2 # seconds max for FV2 to remain open for an individual puff
-PRESSURE_HZ = 10000 # sampling rate for absolute and differential pressure gauges
+PRESSURE_HZ = 10000 # FPGA sampling rate for absolute and differential pressure gauges
 
 
 def int_to_float(reading):
@@ -238,6 +237,9 @@ class RPServer:
         return True
         
     def currentPressure(self):
+        '''
+        Return average pressure over the last 0.1 seconds.
+        '''
         return np.mean(self.absPressures[-1000:])
         
     def lowerPressure(self, desiredPressure, fillPressure):
@@ -248,45 +250,47 @@ class RPServer:
             desiredPressure: (Torr) exhaust and/or pump down to this pressure
             fillPressure: (Torr) if not None, fill to this pressure after pumping out
         '''
+        currentPressure = self.currentPressure()
         if self.state == 'exhaust':
-            if desiredPressure < self.currentPressure() > MECH_PUMP_LIMIT:
+            if desiredPressure < currentPressure > MECH_PUMP_LIMIT:
                 if self.getValveStatus('V7') == 'close':
                     self.addToLog('Beginning exhaust')
                     self.handleValve('V7', command='open')
                 self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
-            elif desiredPressure < self.currentPressure() < MECH_PUMP_LIMIT:
-                self.addToLog('Exhaust complete (%.3g Torr), beginning pump out' % self.currentPressure())
+            elif desiredPressure < currentPressure < MECH_PUMP_LIMIT:
+                self.addToLog('Exhaust complete (%.3g Torr), beginning pump out' % currentPressure)
                 self.setState('pumping out')
                 self.handleValve('V7', command='close')
                 self.handleValve('V4', command='open')
                 self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
             else:
                 self.handleValve('V7', command='close')
-                self.addToLog('Exhaust to %.3g Torr complete (%.3g Torr), pumping was not necessary' % (desiredPressure, self.currentPressure()))
+                self.addToLog('Exhaust to %.3g Torr complete (%.3g Torr), pumping was not necessary' % (desiredPressure, currentPressure))
                 self.setState('idle')
         elif self.state == 'pumping out':
-            if self.currentPressure() > desiredPressure:
+            if currentPressure > desiredPressure:
                 if self.getValveStatus('V4') == 'close':
                     self.handleValve('V4', command='open')
                 self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
             else:
                 self.handleValve('V4', command='close')
-                self.addToLog('Pump out to %.3g Torr complete (%.3g Torr)' % (desiredPressure, self.currentPressure()))
+                self.addToLog('Pump out to %.3g Torr complete (%.3g Torr)' % (desiredPressure, currentPressure))
                 self.setState('idle')
                 if fillPressure is not None:
                     self.setState('filling')
                     self.addTask(0, self.raisePressure, [fillPressure])
             
     def raisePressure(self, desiredPressure):
+        currentPressure = self.currentPressure()
         if self.state == 'filling':
-            if self.currentPressure() < desiredPressure:
+            if currentPressure < desiredPressure - FILL_MARGIN:
                 if self.getValveStatus('V5') == 'close':
                     self.addToLog('Beginning fill')
                     self.handleValve('V5', command='open')
                 self.addTask(0, self.raisePressure, [desiredPressure])
             else:
                 self.handleValve('V5', command='close')
-                self.addToLog('Fill to %.3g Torr complete (%.3g Torr)' % (desiredPressure, self.currentPressure()))
+                self.addToLog('Fill to %.3g Torr complete (%.3g Torr)' % (desiredPressure, currentPressure))
                 self.setState('idle')
             
     def changePressure(self, desiredPressure, pumpOut, exhaust):
@@ -337,9 +341,9 @@ class RPServer:
             valves = [self.getValveStatus('V3'), self.getValveStatus('V4'), self.getValveStatus('V5'), self.getValveStatus('V7'), self.getValveStatus('FV2')]
             if valves == ['open', 'close', 'close', 'open', 'close'] and currentPressure > 760:
                 dp = -2*(currentPressure-760)
-            elif valves == ['open', 'open', 'close', 'close', 'close'] and currentPressure > 0:
-                dp = -2*currentPressure
-            elif valves == ['open', 'close', 'open', 'close', 'close'] and currentPressure < 2000:
+            elif valves == ['open', 'open', 'close', 'close', 'close'] and currentPressure > PUMPED_OUT:
+                dp = -2*(currentPressure-PUMPED_OUT)
+            elif valves == ['open', 'close', 'open', 'close', 'close'] and currentPressure < 4*760:
                 dp = 0.1*(4*760-currentPressure)
             dataLen = int((now-self.lastFakeDataTime)*PRESSURE_HZ)
             self.absPressures.extend([(currentPressure+i*dp/PRESSURE_HZ)*np.random.normal(1, 0.05) for i in range(dataLen)])

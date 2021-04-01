@@ -24,12 +24,9 @@ SOFTWARE_T1 = True  # send a T1 trigger through software (don't wait for hardwar
 PRETRIGGER = 5 # seconds between T0 and T1 (for T1 timing if SOFTWARE_T1 or for post-shot actions if not SOFTWARE_T1)
 UPDATE_INTERVAL = .5  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
-PLOT_TIME_RANGE = 30 # seconds of history shown in plots
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 SHUTTER_CHANGE = 1 # seconds for the shutter to finish opening/closing
-FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
 MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
-PUMPED_OUT = 0 # Torr, desired pumped out pressure
 TORR_TO_BAR = 0.00133322
     
     
@@ -117,7 +114,7 @@ class GUI:
         state_label = tk.Label(state_frame_line1, textvariable=self.state_text, background=gray)
         ## Line 2
         state_frame_line2 = tk.Frame(state_frame, background=gray, pady=5)
-        cancel_button = ttk.Button(state_frame_line2, text='Cancel and reset', command=self.handleInterrupt)
+        cancel_button = ttk.Button(state_frame_line2, text='Cancel and reset valves', command=self.handleInterrupt)
         
         # Pump and fill controls
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
@@ -136,7 +133,7 @@ class GUI:
         exhaust_check = tk.Checkbutton(fill_controls_line2, variable=self.exhaust, background=gray)
         ## Line 3
         fill_controls_line3 = tk.Frame(fill_controls_frame, background=gray)
-        self.execute_button = ttk.Button(fill_controls_line3, text='Execute', command=self.handleChangePressure)
+        self.pump_fill_button = ttk.Button(fill_controls_line3, text='Pump and/or fill', command=self.handlePumpFill)
 
         # Puff controls
         ## Line 1
@@ -218,7 +215,7 @@ class GUI:
         ### Fill controls frame
         desired_pressure_label.pack(side=tk.LEFT)
         self.desired_pressure_entry.pack(side=tk.LEFT)
-        self.execute_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.pump_fill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         pump_out_label.pack(side=tk.LEFT, pady=5)
         pump_out_check.pack(side=tk.LEFT, pady=5, padx=5)
         exhaust_label.pack(side=tk.LEFT, pady=5)
@@ -468,7 +465,10 @@ class GUI:
     def handleInterrupt(self):
         self.middle.interrupt()
         self.enableButtons()
-        self.root.after_cancel(self.afterShotGetData)
+        # Cancel display of post-shot data
+        if self.afterShotGetData:
+            self.root.after_cancel(self.afterShotGetData)
+            self.afterShotGetData = None
         
     def handle_permission(self, puffNumber):
         '''
@@ -477,8 +477,17 @@ class GUI:
         permissionGUIValue = getattr(self, 'permission_%d' % puffNumber).get()
         self.middle.handlePermission(puffNumber, permissionGUIValue)
         
-    def handleChangePressure(self):
+    def handlePumpFill(self):
+        '''
+        Instruct middle server to pump and/or fill to desired pressure. Prompt user for confirmation
+        if pressure is too high for mechanical pump and exhaust is not enabled.
+        '''
         desiredPressure = float(self.desired_pressure_entry.get().strip())
+        pumpingOut = desiredPressure < self.absPressures[-1] or self.pumpOut.get()
+        if pumpingOut and self.absPressures[-1] > MECH_PUMP_LIMIT and not self.exhaust.get():
+            result = tk.messagebox.askquestion("Overpressure Warning", "Are you sure? This may damage the pump. You can enable exhaust to be safe, or proceed dangerously with 'Yes'.", icon='warning')
+            if result != 'yes':
+                return
         self.middle.changePressure(desiredPressure, self.pumpOut.get(), self.exhaust.get())
         
     def handleT0(self):
@@ -518,7 +527,7 @@ class GUI:
             
             
     def enableButtons(self):
-        for button in [self.T0_button, self.execute_button]:
+        for button in [self.T0_button, self.pump_fill_button]:
             button['state'] = 'normal'
         self.bindValveButtons()
         for button in [self.shutter_setting_indicator, self.FV2_indicator, self.V5_indicator, 
@@ -526,7 +535,7 @@ class GUI:
             button.configure(relief=tk.RAISED, cursor='hand1')
         
     def disableButtons(self):
-        for button in [self.T0_button, self.execute_button]:
+        for button in [self.T0_button, self.pump_fill_button]:
             button['state'] = 'disabled'
         for button in [self.shutter_setting_indicator, self.FV2_indicator, self.V5_indicator, 
                        self.V4_indicator, self.V3_indicator, self.V7_indicator]:
