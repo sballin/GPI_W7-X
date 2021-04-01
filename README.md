@@ -92,7 +92,7 @@ Every 0.1 ms, the `data_collector` core on the RP takes two 14-bit readings from
 
 ## Modifying the FPGA code
 
-To compile the FPGA code after any modifications requires Vivado 2017.4, which can be downloaded for free from [Xilinx](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html) (you will need to register for an account though). It takes up about 15 GB of space. 
+To compile the FPGA code after any modifications requires [Vivado 2017.4](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/archive.html), which can be downloaded for free (you will need to register for an account though). It takes up about 15 GB of space. 
 
 ### Crucial FPGA code files
 
