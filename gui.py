@@ -13,7 +13,6 @@ import time
 import datetime
 from xmlrpc.client import ServerProxy
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
@@ -51,6 +50,7 @@ class GUI:
         self.mainloop_running = True   
         self.starting_up = True
         self.middleServerConnected = False
+        self.controlsEnabled = True
         
         self.pressureTimes = []
         self.absPressures = []
@@ -126,11 +126,11 @@ class GUI:
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
         self.pumpOut = tk.IntVar()
         pump_out_label = tk.Label(fill_controls_line2, text='Pump out first', background=gray)
-        pump_out_check = tk.Checkbutton(fill_controls_line2, variable=self.pumpOut, background=gray)
+        self.pump_out_check = tk.Checkbutton(fill_controls_line2, variable=self.pumpOut, background=gray)
         self.exhaust = tk.IntVar()
         self.exhaust.set(1)
         exhaust_label = tk.Label(fill_controls_line2, text='Exhaust >770 Torr', background=gray)
-        exhaust_check = tk.Checkbutton(fill_controls_line2, variable=self.exhaust, background=gray)
+        self.exhaust_check = tk.Checkbutton(fill_controls_line2, variable=self.exhaust, background=gray)
         ## Line 3
         fill_controls_line3 = tk.Frame(fill_controls_frame, background=gray)
         self.pump_fill_button = ttk.Button(fill_controls_line3, text='Pump and/or fill', command=self.handlePumpFill)
@@ -217,9 +217,9 @@ class GUI:
         self.desired_pressure_entry.pack(side=tk.LEFT)
         self.pump_fill_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         pump_out_label.pack(side=tk.LEFT, pady=5)
-        pump_out_check.pack(side=tk.LEFT, pady=5, padx=5)
+        self.pump_out_check.pack(side=tk.LEFT, pady=5, padx=5)
         exhaust_label.pack(side=tk.LEFT, pady=5)
-        exhaust_check.pack(side=tk.LEFT, pady=5, padx=5)
+        self.exhaust_check.pack(side=tk.LEFT, pady=5, padx=5)
         fill_controls_line1.pack(side=tk.TOP, fill=tk.X)
         fill_controls_line2.pack(side=tk.TOP, fill=tk.X)
         fill_controls_line3.pack(side=tk.TOP, fill=tk.X)
@@ -310,37 +310,6 @@ class GUI:
         time_string = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
         self.log.insert(tk.END, ' ' + time_string + ' ' + text)
         self.log.yview(tk.END)
-
-    def _confirm_window(self, question, action_if_confirmed):
-        win = tk.Toplevel()
-        win_width = 250
-        win_height = 75
-        x = (self.screen_width / 2) - (win_width / 2)
-        y = (self.screen_height / 2) - (win_height / 2)
-        win.geometry('%dx%d+%d+%d' % (win_width, win_height, x, y))
-        win.title('Confirm')
-        win.rowconfigure(0, weight=1)
-        win.rowconfigure(1, weight=1)
-        win.columnconfigure(0, weight=1)
-        win.columnconfigure(1, weight=1)
-        msg = tk.Message(win, text=question, width=200)
-        msg.grid(columnspan=2)
-        
-        def action_and_close():
-            action_if_confirmed()
-            win.destroy()
-        
-        confirm = tk.Button(win, text='Confirm', width=10, command=action_and_close)
-        confirm.grid(row=1, column=0)
-        cancel = tk.Button(win, text='Cancel', width=10, command=win.destroy)
-        cancel.grid(row=1, column=1)
-        
-    def _change_puff_gui_state(self, state):
-        elements = [self.permission_1_check, self.start_1_entry, 
-                    self.duration_1_entry, self.permission_2_check,
-                    self.start_2_entry, self.duration_2_entry]
-        for e in elements:
-            e.config(state=state)
             
     def handleDisconnected(self):
         self.middleServerConnected = False
@@ -367,6 +336,10 @@ class GUI:
             return
         
         self.state_text.set('State: ' + data['state'])
+        if self.controlsEnabled and data['state'] in ['filling', 'pumping out', 'exhaust', 'shot']:
+            self.disableControls()
+        if not self.controlsEnabled and data['state'] in ['idle', 'manual control']:
+            self.enableControls()
         
         shutterSetting = data['shutter_setting']
         if shutterSetting == 1:
@@ -415,24 +388,24 @@ class GUI:
             
         self.pressureTimes, self.absPressures, self.diffPressures = zip(*data['pressures_history'])
         if time.time() - self.last_plot > UPDATE_INTERVAL:
-            self.draw_plots()
+            self.drawPlots()
             self.last_plot = time.time()
             
-    def start(self, puff_number):
+    def getPuffStart(self, puff_number):
         try:
             text = getattr(self, 'start_%d_entry' % puff_number).get().strip()
             return float(text)
         except Exception as e:
             return None
         
-    def duration(self, puff_number):
+    def getPuffDuration(self, puff_number):
         try:
             text = getattr(self, 'duration_%d_entry' % puff_number).get().strip()
             return float(text)
         except Exception as e:
             return None
     
-    def draw_plots(self):
+    def drawPlots(self):
         # Do not attempt to draw plots if no data has been collected
         now = time.time()
         relative_times = [t - now for t in self.pressureTimes]
@@ -459,12 +432,9 @@ class GUI:
         
         self.fig.canvas.draw_idle()
 
-    def handle_safe_state(self):
-        pass
-        
     def handleInterrupt(self):
         self.middle.interrupt()
-        self.enableButtons()
+        self.enableControls()
         # Cancel display of post-shot data
         if self.afterShotGetData:
             self.root.after_cancel(self.afterShotGetData)
@@ -492,18 +462,18 @@ class GUI:
         
     def handleT0(self):
         Tdone = self.middle.handleT0({'puff_1_permission': self.permission_1.get(),
-                                      'puff_1_start': self.start(1),
-                                      'puff_1_duration': self.duration(1),
+                                      'puff_1_start': self.getPuffStart(1),
+                                      'puff_1_duration': self.getPuffDuration(1),
                                       'puff_2_permission': self.permission_2.get(),
-                                      'puff_2_start': self.start(2),
-                                      'puff_2_duration': self.duration(2),
+                                      'puff_2_start': self.getPuffStart(2),
+                                      'puff_2_duration': self.getPuffDuration(2),
                                       'shutter_change_duration': SHUTTER_CHANGE,
                                       'software_t1': SOFTWARE_T1,
                                       'pretrigger': PRETRIGGER})
         # If a nonzero value is returned, settings were accepted and shot is happening for Tdone seconds
         if Tdone != 0:
-            self.disableButtons()
-            self.root.after(int((Tdone)*1000), self.enableButtons)
+            self.disableControls()
+            self.root.after(int((Tdone)*1000), self.enableControls)
             self.afterShotGetData = self.root.after(int((Tdone+1)*1000), self.plotPuffs)
             
     def bindValveButtons(self):
@@ -525,18 +495,24 @@ class GUI:
         else:
             self.middle.handleValve('V4')
             
+    def changeStandardElements(self, state):
+        for element in [self.permission_1_check, self.start_1_entry, self.duration_1_entry, 
+                        self.permission_2_check, self.start_2_entry, self.duration_2_entry,
+                        self.T0_button, self.pump_fill_button, self.pump_out_check, 
+                        self.exhaust_check, self.desired_pressure_entry]:
+            element.config(state=state)
             
-    def enableButtons(self):
-        for button in [self.T0_button, self.pump_fill_button]:
-            button['state'] = 'normal'
+    def enableControls(self):
+        self.controlsEnabled = True
+        self.changeStandardElements('normal')
         self.bindValveButtons()
         for button in [self.shutter_setting_indicator, self.FV2_indicator, self.V5_indicator, 
                        self.V4_indicator, self.V3_indicator, self.V7_indicator]:
             button.configure(relief=tk.RAISED, cursor='hand1')
         
-    def disableButtons(self):
-        for button in [self.T0_button, self.pump_fill_button]:
-            button['state'] = 'disabled'
+    def disableControls(self):
+        self.controlsEnabled = False
+        self.changeStandardElements('disabled')
         for button in [self.shutter_setting_indicator, self.FV2_indicator, self.V5_indicator, 
                        self.V4_indicator, self.V3_indicator, self.V7_indicator]:
             button.unbind('<Button-1>')

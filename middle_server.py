@@ -471,6 +471,12 @@ class RPServer:
         return status
                 
     def handleValve(self, valve_name, command=None):
+        """Open/close specified valve.
+        
+        Args:
+            valve_name: (string) One of V5, V4, V3, V7
+            command: (string) 'open'/'close' (default None will toggle)
+        """
         if valve_name == 'FV2':
             setter_method = 'set_fast'
         else:
@@ -498,9 +504,6 @@ class RPServer:
         # Send signal
         getattr(self.RPKoheron, setter_method)(signal)
             
-    def setSafeState(self, value):
-        self.RPKoheron.set_GPI_safe_state(int(value))
-        
     def setPermission(self, puff_number, value):
         '''
         May be possible to remove this method. Does Red Pitaya even check permission?
