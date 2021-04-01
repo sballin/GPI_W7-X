@@ -318,29 +318,32 @@ class RPServer:
                 self.lowerPressure(desiredPressure, None)
         
     def getFakePressureData(self):
+        '''
+        Create fake pressure data based on valve settings for purpose of testing pump/fill routines.
+        '''
         now = time.time()
         delta = 1/PRESSURE_HZ
-        # Create fake data for testing purposes
-        if self.absPressures:
+        initialAbsPressure = 300
+        if not self.absPressures:
+            # Initialize fake data
+            self.absPressures = list(initialAbsPressure*np.random.normal(1, 0.05, 10000))
+            self.diffPressures = list(np.random.normal(1, 0.1, 10000))
+            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+            self.lastFakeDataTime = now
+        else:
             # Continue creaking fake data
             dp = 0
             currentPressure = self.currentPressure()
             valves = [self.getValveStatus('V3'), self.getValveStatus('V4'), self.getValveStatus('V5'), self.getValveStatus('V7'), self.getValveStatus('FV2')]
             if valves == ['open', 'close', 'close', 'open', 'close'] and currentPressure > 760:
-                dp = -100
+                dp = -2*(currentPressure-760)
             elif valves == ['open', 'open', 'close', 'close', 'close'] and currentPressure > 0:
-                dp = -100
+                dp = -2*currentPressure
             elif valves == ['open', 'close', 'open', 'close', 'close'] and currentPressure < 2000:
-                dp = 100
+                dp = 0.1*(4*760-currentPressure)
             dataLen = int((now-self.lastFakeDataTime)*PRESSURE_HZ)
             self.absPressures.extend([(currentPressure+i*dp/PRESSURE_HZ)*np.random.normal(1, 0.05) for i in range(dataLen)])
             self.diffPressures.extend(np.random.normal(1, 0.01, dataLen))
-            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
-            self.lastFakeDataTime = now
-        else:
-            # Initialize fake data
-            self.absPressures = list(300*np.random.normal(1, 0.05, 10000))
-            self.diffPressures = list(np.random.normal(1, 0.1, 10000))
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
             self.lastFakeDataTime = now
                
