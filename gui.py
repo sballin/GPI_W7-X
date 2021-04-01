@@ -42,6 +42,47 @@ def find_nearest(array, value):
     if idx > 0 and (idx == len(array) or np.fabs(value - array[idx-1]) < np.fabs(value - array[idx])):
         return idx-1
     return idx
+    
+    
+class ToolTip(object):
+    def __init__(self, widget):
+        self.widget = widget
+        self.tipwindow = None
+        self.id = None
+        self.x = self.y = 0
+        self.text = None
+
+    def showtip(self, text):
+        "Display text in tooltip window"
+        self.text = text
+        if self.tipwindow or not self.text:
+            return
+        x, y, cx, cy = self.widget.bbox("insert")
+        x = x + self.widget.winfo_rootx() + 15
+        y = y + cy + self.widget.winfo_rooty() + 27
+        self.tipwindow = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(1)
+        tw.wm_geometry("+%d+%d" % (x, y))
+        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                         background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                         font=("tahoma", "8", "normal"))
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tipwindow
+        self.tipwindow = None
+        if tw:
+            tw.destroy()
+
+
+def createToolTip(widget, text):
+    toolTip = ToolTip(widget)
+    def enter(event):
+        toolTip.showtip(text)
+    def leave(event):
+        toolTip.hidetip()
+    widget.bind('<Enter>', enter)
+    widget.bind('<Leave>', leave)
 
 
 class GUI:
@@ -93,13 +134,19 @@ class GUI:
         font = tkinter.font.Font(size=6)
         
         self.shutter_setting_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter setting', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        createToolTip(self.shutter_setting_indicator, 'Open/close shutter')
         self.shutter_sensor_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter sensor', fg='white', bg='black', font=font)
     
         self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        createToolTip(self.FV2_indicator, 'Open/close valve')
         self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        createToolTip(self.V5_indicator, 'Open/close valve')
         self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        createToolTip(self.V4_indicator, 'Open/close valve')
         self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        createToolTip(self.V3_indicator, 'Open/close valve')
         self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
+        createToolTip(self.V7_indicator, 'Open/close valve')
         self.bindValveButtons()
         
         # Entire column to the right of the live graphs
@@ -126,10 +173,12 @@ class GUI:
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
         self.pumpOut = tk.IntVar()
         pump_out_label = tk.Label(fill_controls_line2, text='Pump out first', background=gray)
+        createToolTip(pump_out_label, 'Pump out before filling to desired pressure')
         self.pump_out_check = tk.Checkbutton(fill_controls_line2, variable=self.pumpOut, background=gray)
         self.exhaust = tk.IntVar()
         self.exhaust.set(1)
         exhaust_label = tk.Label(fill_controls_line2, text='Exhaust >770 Torr', background=gray)
+        createToolTip(exhaust_label, 'Exhaust to atmosphere before using mechanical pump')
         self.exhaust_check = tk.Checkbutton(fill_controls_line2, variable=self.exhaust, background=gray)
         ## Line 3
         fill_controls_line3 = tk.Frame(fill_controls_frame, background=gray)
