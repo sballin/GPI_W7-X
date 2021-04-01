@@ -425,7 +425,9 @@ class RPServer:
                 'FV2': self.getValveStatus('FV2'),
                 'pressures_history': self.GUIData,
                 'messages': messageQueue,
-                'state': self.state}
+                'state': self.state,
+                'w7x_permission': str(self.RPKoheron.get_W7X_permission()),
+                't1': str(self.RPKoheron.get_W7X_T1())}
             
     def getShutterSetting(self):
         return self.RPKoheron.get_analog_out()
@@ -581,7 +583,7 @@ class RPServer:
         self.RPKoheron.reset_time(int(bothPuffsDone*1000))
         # Variables to record times to return appropriate data to GUI post-puff
         self.lastT1 = time.time()+pretrigger
-        self.lastTdone = time.time()+pretrigger+bothPuffsDone+2
+        self.lastTdone = self.lastT1+bothPuffsDone+2
         
         # Send fast puff timing info to FPGA 
         if puff_1_happening: # never False

@@ -117,7 +117,7 @@ class GUI:
         state_label = tk.Label(state_frame_line1, textvariable=self.state_text, background=gray)
         ## Line 2
         state_frame_line2 = tk.Frame(state_frame, background=gray, pady=5)
-        interrupt_button = ttk.Button(state_frame_line2, text='Interrupt action', command=self.handleInterrupt)
+        cancel_button = ttk.Button(state_frame_line2, text='Cancel and reset', command=self.handleInterrupt)
         
         # Pump and fill controls
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
@@ -153,16 +153,17 @@ class GUI:
         self.duration_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry.insert(0, str(DEFAULT_PUFF))
         
-        permission_controls_frame = tk.Frame(controls_frame, background=gray)
-        W7X_permission_label = tk.Label(permission_controls_frame, text='W7-X permission', background=gray)
-        W7X_permission_check = tk.Checkbutton(permission_controls_frame, background=gray, state=tk.DISABLED)
-        
-        GPI_safe_state_label = tk.Label(permission_controls_frame, text='GPI safe state', background=gray)
-        self.GPI_safe_status = tk.IntVar()
-        GPI_safe_state_check = tk.Checkbutton(permission_controls_frame, background=gray, command=self.handle_safe_state, variable=self.GPI_safe_status)
+        permission_controls_line1 = tk.Frame(controls_frame, background=gray)
+        self.w7x_permission_text = tk.StringVar()
+        self.w7x_permission_text.set('W7-X permission signal: unknown')
+        self.w7x_permission_label = tk.Label(permission_controls_line1, textvariable=self.w7x_permission_text, background=gray)
+        permission_controls_line2 = tk.Frame(controls_frame, background=gray)
+        self.t1_text = tk.StringVar()
+        self.t1_text.set('T1 HW or SW signal: unknown')
+        self.t1_label = tk.Label(permission_controls_line2, textvariable=self.t1_text, background=gray)
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
-        self.T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handleT0)        
+        self.T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handleT0)
 
         self.fig = Figure(figsize=(3.5, 6), dpi=100, facecolor=gray)
         self.fig.subplots_adjust(left=0.3, right=0.7, top=0.925, hspace=0.5)
@@ -214,13 +215,6 @@ class GUI:
         self.canvas.get_tk_widget().pack(side=tk.LEFT)
         self.canvas.get_tk_widget().configure()
         ## Column 3
-        ### State frame
-        state_label.pack(side=tk.LEFT)
-        state_frame_line1.pack(side=tk.TOP, fill=tk.X)
-        interrupt_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        state_frame_line2.pack(side=tk.TOP, fill=tk.X)
-        state_frame.pack(side=tk.TOP, fill=tk.X, pady=0)
-        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Fill controls frame
         desired_pressure_label.pack(side=tk.LEFT)
         self.desired_pressure_entry.pack(side=tk.LEFT)
@@ -248,14 +242,20 @@ class GUI:
         self.duration_2_entry.grid(row=2, column=9)
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
         ### Permission controls frame
-        W7X_permission_label.pack(side=tk.LEFT)
-        W7X_permission_check.pack(side=tk.LEFT, padx=5)
-        GPI_safe_state_label.pack(side=tk.LEFT)
-        GPI_safe_state_check.pack(side=tk.LEFT, padx=5)
-        permission_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
+        self.w7x_permission_label.pack(side=tk.LEFT)
+        permission_controls_line1.pack(side=tk.TOP, fill=tk.X, pady=2)
+        self.t1_label.pack(side=tk.LEFT)
+        permission_controls_line2.pack(side=tk.TOP, fill=tk.X, pady=2)
         ### Action controls frame
         self.T0_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
         action_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
+        ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
+        ### State frame
+        state_label.pack(side=tk.LEFT)
+        state_frame_line1.pack(side=tk.TOP, fill=tk.X)
+        cancel_button.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        state_frame_line2.pack(side=tk.TOP, fill=tk.X)
+        state_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Log
         log_controls_frame = tk.Frame(controls_frame, background=gray)
@@ -399,6 +399,22 @@ class GUI:
         
         for message in data['messages']:
             self._add_to_log(message)
+            
+        if data['w7x_permission'] == '4294967295':
+            txt = 'high'
+        elif data['w7x_permission'] == '0':
+            txt = 'low'
+        else:
+            txt = data['w7x_permission']
+        self.w7x_permission_text.set('W7-X permission signal: %s' % txt)
+        
+        if data['t1'] == '4294967295':
+            txt = 'high'
+        elif data['t1'] == '0':
+            txt = 'low'
+        else:
+            txt = data['w7x_permission']
+        self.t1_text.set('T1 HW or SW signal: %s' % txt)
             
         self.pressureTimes, self.absPressures, self.diffPressures = zip(*data['pressures_history'])
         if time.time() - self.last_plot > UPDATE_INTERVAL:
