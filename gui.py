@@ -501,9 +501,21 @@ class GUI:
         self.shutter_setting_indicator.bind("<Button-1>", lambda event: self.middle.handleToggleShutter())
         self.FV2_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('FV2'))
         self.V5_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V5'))
-        self.V4_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V4'))
+        self.V4_indicator.bind("<Button-1>", lambda event: self.handleV4())
         self.V3_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V3'))
         self.V7_indicator.bind("<Button-1>", lambda event: self.middle.handleValve('V7'))        
+        
+    def handleV4(self):
+        '''
+        Prompt user for confirmation if opening V4 and pressure is high as the pump may be damaged.
+        '''
+        if self.absPressures[-1] > MECH_PUMP_LIMIT and self.middle.getValveStatus('V4') == 'close':
+            result = tk.messagebox.askquestion("Overpressure Warning", "Are you sure? This may damage the pump.", icon='warning')
+            if result == 'yes':
+                self.middle.handleValve('V4', 'open')
+        else:
+            self.middle.handleValve('V4')
+            
             
     def enableButtons(self):
         for button in [self.T0_button, self.execute_button]:
