@@ -140,6 +140,24 @@ or if you have the GPI_RP.zip file in your current directory, and you can ping t
     curl -v -F $(NAME).zip=@$(INSTRUMENT_ZIP) http://$(HOST)/api/instruments/upload
     curl http://$(HOST)/api/instruments/run/$(NAME)
 
+### Debugging the RP C++ server
+
+The server should produce /root/errs.log and /root/reqs.log files on the RP.
+
+View additional koheron-server log messages (including `ctx.log<INFO>('some info')` statements in C++) with
+    
+    journalctl -u koheron-server 
+
+For real debugging, add/uncomment this line in koheron-sdk/server/server.mk:
+
+    SERVER_CCXXFLAGS += -fsanitize=address,undefined -O0 -g
+
+Then you can compile the server binary directly on the RP:
+
+    make -C /git/GPI_W7-X/koheron-sdk clean server
+    /tmp/live-instrument/serverd
+    gdb --pid=$(pidof serverd)
+
 ### Other RP configuration details
 
-In /usr/lib/arm-linux-gnueabihf on the RP, symlink libstdc++.so.6 has been changed to point at libstdc++.so.6.0.22 (instead of libstdc++.so.6.0.21 originally), copied from Xilinx/SDK/2017.4/gnu/aarch32/lin/gcc-arm-linux-gnueabi/arm-linux-gnueabihf/lib
+In /usr/lib/arm-linux-gnueabihf on the RP, symlink libstdc++.so.6 has been changed to point at libstdc++.so.6.0.22 (instead of libstdc++.so.6.0.21 originally), copied from Xilinx/SDK/2017.4/gnu/aarch32/lin/gcc-arm-linux-gnueabi/arm-linux-gnueabihf/lib. This fixed an error that was being thrown by serverd.
