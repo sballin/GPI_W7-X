@@ -53,7 +53,11 @@ class ToolTip(object):
         self.text = None
 
     def showtip(self, text):
-        "Display text in tooltip window"
+        """Display text in tooltip window.
+        
+        Args:
+            text: (string) text to display
+        """
         self.text = text
         if self.tipwindow or not self.text:
             return
@@ -69,6 +73,7 @@ class ToolTip(object):
         label.pack(ipadx=1)
 
     def hidetip(self):
+        """Hide tooltip window and text."""
         tw = self.tipwindow
         self.tipwindow = None
         if tw:
@@ -76,6 +81,12 @@ class ToolTip(object):
 
 
 def createToolTip(widget, text):
+    """Make a widget show help text on hover.
+    
+    Args:
+        widget: (tkinter widget) label/button/checkbox...
+        text: (string) help text to display
+    """
     toolTip = ToolTip(widget)
     def enter(event):
         toolTip.showtip(text)
@@ -186,15 +197,15 @@ class GUI:
 
         # Puff controls
         ## Line 1
-        self.permission_1 = tk.IntVar()
+        self.enable_puff_1 = tk.IntVar()
         puff_controls_frame = tk.Frame(controls_frame, background=gray)
-        self.permission_1_check = tk.Checkbutton(puff_controls_frame, variable=self.permission_1, command=lambda: self.handle_permission(1), background=gray)
+        self.enable_puff_1_check = tk.Checkbutton(puff_controls_frame, variable=self.enable_puff_1, background=gray)
         self.start_1_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_1_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_1_entry.insert(0, str(DEFAULT_PUFF))
         ## Line 2
-        self.permission_2 = tk.IntVar()
-        self.permission_2_check = tk.Checkbutton(puff_controls_frame, variable=self.permission_2, command=lambda: self.handle_permission(2), background=gray)
+        self.enable_puff_2 = tk.IntVar()
+        self.enable_puff_2_check = tk.Checkbutton(puff_controls_frame, variable=self.enable_puff_2, background=gray)
         self.start_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry.insert(0, str(DEFAULT_PUFF))
@@ -275,15 +286,15 @@ class GUI:
         fill_controls_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Puff controls frame
-        tk.Label(puff_controls_frame, text='Permission', background=gray).grid(row=0, column=7)
+        tk.Label(puff_controls_frame, text='Enable', background=gray).grid(row=0, column=7)
         tk.Label(puff_controls_frame, text='Start (s)', background=gray).grid(row=0, column=8)
         tk.Label(puff_controls_frame, text='Duration (s)', background=gray).grid(row=0, column=9)
         tk.Label(puff_controls_frame, text='Puff 1', background=gray).grid(row=1, column=6)
         tk.Label(puff_controls_frame, text='Puff 2', background=gray).grid(row=2, column=6)
-        self.permission_1_check.grid(row=1, column=7)
+        self.enable_puff_1_check.grid(row=1, column=7)
         self.start_1_entry.grid(row=1, column=8)
         self.duration_1_entry.grid(row=1, column=9)
-        self.permission_2_check.grid(row=2, column=7)
+        self.enable_puff_2_check.grid(row=2, column=7)
         self.start_2_entry.grid(row=2, column=8)
         self.duration_2_entry.grid(row=2, column=9)
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
@@ -489,13 +500,6 @@ class GUI:
             self.root.after_cancel(self.afterShotGetData)
             self.afterShotGetData = None
         
-    def handle_permission(self, puffNumber):
-        '''
-        May be possible to remove this method. Does Red Pitaya even check permission?
-        '''
-        permissionGUIValue = getattr(self, 'permission_%d' % puffNumber).get()
-        self.middle.handlePermission(puffNumber, permissionGUIValue)
-        
     def handlePumpFill(self):
         '''
         Instruct middle server to pump and/or fill to desired pressure. Prompt user for confirmation
@@ -510,10 +514,10 @@ class GUI:
         self.middle.changePressure(desiredPressure, self.pumpOut.get(), self.exhaust.get())
         
     def handleT0(self):
-        Tdone = self.middle.handleT0({'puff_1_permission': self.permission_1.get(),
+        Tdone = self.middle.handleT0({'puff_1_permission': self.enable_puff_1.get(),
                                       'puff_1_start': self.getPuffStart(1),
                                       'puff_1_duration': self.getPuffDuration(1),
-                                      'puff_2_permission': self.permission_2.get(),
+                                      'puff_2_permission': self.enable_puff_2.get(),
                                       'puff_2_start': self.getPuffStart(2),
                                       'puff_2_duration': self.getPuffDuration(2),
                                       'shutter_change_duration': SHUTTER_CHANGE,
@@ -545,8 +549,8 @@ class GUI:
             self.middle.handleValve('V4')
             
     def changeStandardElements(self, state):
-        for element in [self.permission_1_check, self.start_1_entry, self.duration_1_entry, 
-                        self.permission_2_check, self.start_2_entry, self.duration_2_entry,
+        for element in [self.enable_puff_1_check, self.start_1_entry, self.duration_1_entry, 
+                        self.enable_puff_2_check, self.start_2_entry, self.duration_2_entry,
                         self.T0_button, self.pump_fill_button, self.pump_out_check, 
                         self.exhaust_check, self.desired_pressure_entry]:
             element.config(state=state)

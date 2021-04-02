@@ -221,6 +221,8 @@ class RPServer:
         self.handleValve('V7', command='close')
         self.handleValve('FV2', command='close')
         self.setShutter('close')
+        self.setPermission(1, False)
+        self.setPermission(2, False)
         self.RPKoheron.send_T1(0)
         self.addToLog('Finished setting default state')
         
@@ -505,9 +507,12 @@ class RPServer:
         getattr(self.RPKoheron, setter_method)(signal)
             
     def setPermission(self, puff_number, value):
-        '''
-        May be possible to remove this method. Does Red Pitaya even check permission?
-        '''
+        """Output permission signal on pin required by black box for it to really open FV.
+        
+        Args:
+            puff_number: (int) 1 or 2
+            value: (bool) True = permission
+        """
         getattr(self.RPKoheron, 'set_fast_permission_%d' % puff_number)(int(value))
         
     def sendT1toRP(self):
@@ -517,6 +522,9 @@ class RPServer:
     def postShotActions(self):
         self.handleValve('V3', command='open')
         self.setState('idle')
+        
+        self.setPermission(1, False)
+        self.setPermission(2, False)
         
         # Save shot data
         start = find_nearest(np.array(self.pressureTimes), self.lastT1)
@@ -559,6 +567,10 @@ class RPServer:
                 quit = True
         if quit:
             return 0
+            
+        # Set permission signal required by black box
+        self.setPermission(1, puff_1_happening)
+        self.setPermission(2, puff_2_happening)
         
         self.setState('shot')
         self.addToLog('---T0---')
