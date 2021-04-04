@@ -1,6 +1,6 @@
 # W7-X gas puff imaging diagnostic codebase
 
-![](https://user-images.githubusercontent.com/2719004/52680534-b71dbf00-2f06-11e9-89de-4859e10b7c67.png)
+![](https://user-images.githubusercontent.com/2719004/113520288-f896db80-955f-11eb-9273-c6dab1703977.png)
 
 ## Usage
 
