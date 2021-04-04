@@ -229,7 +229,7 @@ class GUI:
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
         self.ax_abs.yaxis.tick_right()
-        self.ax_abs.set_xlabel('Seconds')
+        self.ax_abs.set_xlabel('Time [s]')
         self.ax_abs.set_title('Absolute gauge')
         self.ax_abs.grid(True, color='#c9dae5')
         self.ax_abs.patch.set_facecolor('#e3eff7')
