@@ -214,10 +214,12 @@ class GUI:
         self.w7x_permission_text = tk.StringVar()
         self.w7x_permission_text.set('W7-X permission signal: unknown')
         self.w7x_permission_label = tk.Label(permission_controls_line1, textvariable=self.w7x_permission_text, background=gray)
+        createToolTip(self.w7x_permission_label, 'W7-X permission signal is required by black box\nin order to open puff valve during a shot')
         permission_controls_line2 = tk.Frame(controls_frame, background=gray)
         self.t1_text = tk.StringVar()
         self.t1_text.set('T1 HW or SW signal: unknown')
         self.t1_label = tk.Label(permission_controls_line2, textvariable=self.t1_text, background=gray)
+        createToolTip(self.t1_label, 'T1 HW or SW signal should be always low except during puff')
         
         action_controls_frame = tk.Frame(controls_frame, background=gray)
         self.T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handleT0)
