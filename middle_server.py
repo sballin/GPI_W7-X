@@ -22,18 +22,19 @@ from GPI_RP.GPI_RP import GPI_RP
 # User settings
 RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
 LOG_FILE = 'log.txt'
-PUMPED_OUT = 0 # Torr, pressure at which to stop pumping out
-FILL_MARGIN = 5 # Torr, stop this amount short of desired fill pressure to avoid overshoot
+PUMPED_OUT = 0 # mbar, pressure at which to stop pumping out
+FILL_MARGIN = 5 # mbar, stop this amount short of desired fill pressure to avoid overshoot
 SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
 ANNOUNCE_HEALTH = False # regularly log info about middle server health
 
 # Less commonly changed user settings
 CONTROL_INTERVAL = 0.1 # seconds between pump/fill loop iterations
-MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
-MAX_FILL = 3*760 # Torr, max pressure that user can request
+MECH_PUMP_LIMIT = 1026 # mbar, max pressure the mechanical pump should work on
+MAX_FILL = 3*1013 # mbar, max pressure that user can request
 READING_HISTORY = 30 # seconds of pressure readings to keep in memory
 MAX_PUFF_DURATION = 2 # seconds max for FV2 to remain open for an individual puff
 PRESSURE_HZ = 10000 # FPGA sampling rate for absolute and differential pressure gauges
+TORR_TO_MBAR = 1.33322
 
 
 def int_to_float(reading):
@@ -59,28 +60,28 @@ def signed_conversion(reading):
     return intNum
     
     
-def abs_bin_to_torr(binary_string):
+def abs_bin_to_mbar(binary_string):
     # Calibration for IN 1 of W7XRP2 with a 0.252 divider 
     abs_voltage = 0.0661+4.526*int_to_float(binary_string) # 
     # 500 Torr/Volt
-    return 500*abs_voltage
+    return 500*abs_voltage*TORR_TO_MBAR
     
     
-def diff_bin_to_torr(binary_string):
+def diff_bin_to_mbar(binary_string):
     # Calibration for IN 2 of W7XRP2 with a 0.342 divider
     diff_voltage = 0.047+3.329*int_to_float(binary_string) 
     # 10 Torr/Volt
-    return 10*diff_voltage
+    return 10*diff_voltage*TORR_TO_MBAR
     
     
-def abs_torr(combined_string):
+def abs_mbar(combined_string):
     abs_binary_string = '{0:032b}'.format(combined_string)[-28:-14]
-    return abs_bin_to_torr(abs_binary_string)
+    return abs_bin_to_mbar(abs_binary_string)
     
     
-def diff_torr(combined_string):
+def diff_mbar(combined_string):
     diff_binary_string = '{0:032b}'.format(combined_string)[-14:]
-    return diff_bin_to_torr(diff_binary_string)
+    return diff_bin_to_mbar(diff_binary_string)
     
     
 def find_nearest(array, value):
@@ -107,7 +108,7 @@ class RPServer:
         logging.basicConfig(filename=LOG_FILE, format='%(message)s', level=logging.DEBUG)
         
         # Queues emptied every time the GUI asks for more data to display
-        self.GUIData = []
+        self.GUIPressureData = []
         # Queue of (time to execute, function, args) objects like threading.Timer does. We want to 
         # avoid threading for Koheron interactions because of potential bugs
         self.taskQueue = []
@@ -249,8 +250,8 @@ class RPServer:
         Lower the pressure and optionally start filling to another pressure.
         
         Args:
-            desiredPressure: (Torr) exhaust and/or pump down to this pressure
-            fillPressure: (Torr) if not None, fill to this pressure after pumping out
+            desiredPressure: (mbar) exhaust and/or pump down to this pressure
+            fillPressure: (mbar) if not None, fill to this pressure after pumping out
         '''
         currentPressure = self.currentPressure()
         if self.state == 'exhaust':
@@ -260,14 +261,14 @@ class RPServer:
                     self.handleValve('V7', command='open')
                 self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
             elif desiredPressure < currentPressure < MECH_PUMP_LIMIT:
-                self.addToLog('Exhaust complete (%.3g Torr), beginning pump out' % currentPressure)
+                self.addToLog('Exhaust complete (%.4g mbar), beginning pump out' % currentPressure)
                 self.setState('pumping out')
                 self.handleValve('V7', command='close')
                 self.handleValve('V4', command='open')
                 self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
             else:
                 self.handleValve('V7', command='close')
-                self.addToLog('Exhaust to %.3g Torr complete (%.3g Torr), pumping was not necessary' % (desiredPressure, currentPressure))
+                self.addToLog('Exhaust to %.4g mbar complete (%.4g mbar), pumping was not necessary' % (desiredPressure, currentPressure))
                 self.setState('idle')
         elif self.state == 'pumping out':
             if currentPressure > desiredPressure:
@@ -276,7 +277,7 @@ class RPServer:
                 self.addTask(0, self.lowerPressure, [desiredPressure, fillPressure])
             else:
                 self.handleValve('V4', command='close')
-                self.addToLog('Pump out to %.3g Torr complete (%.3g Torr)' % (desiredPressure, currentPressure))
+                self.addToLog('Pump out to %.4g mbar complete (%.4g mbar)' % (desiredPressure, currentPressure))
                 self.setState('idle')
                 if fillPressure is not None:
                     self.setState('filling')
@@ -292,7 +293,7 @@ class RPServer:
                 self.addTask(0, self.raisePressure, [desiredPressure])
             else:
                 self.handleValve('V5', command='close')
-                self.addToLog('Fill to %.3g Torr complete (%.3g Torr)' % (desiredPressure, currentPressure))
+                self.addToLog('Fill to %.4g mbar complete (%.4g mbar)' % (desiredPressure, currentPressure))
                 self.setState('idle')
             
     def changePressure(self, desiredPressure, pumpOut, exhaust):
@@ -300,9 +301,9 @@ class RPServer:
         Raise or lower pressure as necessary.
         
         Args:
-            desiredPressure: (Torr)
-            pumpOut: (bool) whether to pump to 0 Torr before filling to desired pressure
-            exhaust: (bool) whether to exhaust when pressure is > 770 Torr
+            desiredPressure: (mbar)
+            pumpOut: (bool) whether to pump to 0 mbar before filling to desired pressure
+            exhaust: (bool) whether to exhaust when pressure is > 1026 mbar
         '''
         if desiredPressure < PUMPED_OUT or desiredPressure > MAX_FILL:
             self.addToLog('User requested an invalid pressure')
@@ -341,12 +342,12 @@ class RPServer:
             dp = 0
             currentPressure = self.currentPressure()
             valves = [self.getValveStatus('V3'), self.getValveStatus('V4'), self.getValveStatus('V5'), self.getValveStatus('V7'), self.getValveStatus('FV2')]
-            if valves == ['open', 'close', 'close', 'open', 'close'] and currentPressure > 760:
-                dp = -2*(currentPressure-760)
+            if valves == ['open', 'close', 'close', 'open', 'close'] and currentPressure > 1013:
+                dp = -2*(currentPressure-1013)
             elif valves == ['open', 'open', 'close', 'close', 'close'] and currentPressure > PUMPED_OUT:
                 dp = -2*(currentPressure-PUMPED_OUT)
-            elif valves == ['open', 'close', 'open', 'close', 'close'] and currentPressure < 4*760:
-                dp = 0.1*(4*760-currentPressure)
+            elif valves == ['open', 'close', 'open', 'close', 'close'] and currentPressure < 4*1013:
+                dp = 0.1*(4*1013-currentPressure)
             dataLen = int((now-self.lastFakeDataTime)*PRESSURE_HZ)
             self.absPressures.extend([(currentPressure+i*dp/PRESSURE_HZ)*np.random.normal(1, 0.05) for i in range(dataLen)])
             self.diffPressures.extend(np.random.normal(1, 0.01, dataLen))
@@ -364,8 +365,8 @@ class RPServer:
             combined_pressure_history = self.RPKoheron.get_GPI_data()
                     
             # Add fast readings
-            self.absPressures.extend([abs_torr(i) for i in combined_pressure_history])
-            self.diffPressures.extend([diff_torr(i) for i in combined_pressure_history])
+            self.absPressures.extend([abs_mbar(i) for i in combined_pressure_history])
+            self.diffPressures.extend([diff_mbar(i) for i in combined_pressure_history])
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
             
             if len(combined_pressure_history) == 50000:
@@ -393,11 +394,11 @@ class RPServer:
             
         # Calculate moving mean of 1000 samples (0.1 s) to send to GUI
         if len(self.pressureTimes) > 1000:
-            self.GUIData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
-                                    move_mean(self.absPressures, 1000)[::1000].tolist(),
-                                    move_mean(self.diffPressures, 1000)[::1000].tolist()))
+            self.GUIPressureData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
+                                            move_mean(self.absPressures, 1000)[::1000].tolist(),
+                                            move_mean(self.diffPressures, 1000)[::1000].tolist()))
         else:
-            self.GUIData = [[],[],[]]
+            self.GUIPressureData = [[],[],[]]
         
     def setShutter(self, state):
         if state == 'open':
@@ -432,7 +433,7 @@ class RPServer:
                 'V5': self.getValveStatus('V5'),
                 'V7': self.getValveStatus('V7'),
                 'FV2': self.getValveStatus('FV2'),
-                'pressures_history': self.GUIData,
+                'pressures_history': self.GUIPressureData,
                 'messages': messageQueue,
                 'state': self.state,
                 'w7x_permission': str(self.RPKoheron.get_W7X_permission()),

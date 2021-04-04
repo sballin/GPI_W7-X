@@ -25,8 +25,7 @@ UPDATE_INTERVAL = .5  # seconds between plot updates
 CONTROL_INTERVAL = 0.2 # seconds between pump/fill loop iterations
 DEFAULT_PUFF = 0.05  # seconds duration for each puff 
 SHUTTER_CHANGE = 1 # seconds for the shutter to finish opening/closing
-MECH_PUMP_LIMIT = 770 # Torr, max pressure the mechanical pump should work on
-TORR_TO_BAR = 0.00133322
+MECH_PUMP_LIMIT = 1026 # mbar, max pressure the mechanical pump should work on
     
     
 def find_nearest(array, value):
@@ -144,20 +143,21 @@ class GUI:
 
         font = tkinter.font.Font(size=6)
         
-        self.shutter_setting_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter setting', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
-        createToolTip(self.shutter_setting_indicator, 'Open/close shutter')
+        self.shutter_setting_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter setting', fg='white', bg='black', font=font, relief=tk.RAISED, borderwidth=2, cursor='hand1')
+        createToolTip(self.shutter_setting_indicator, 'Open/close camera turning mirror')
         self.shutter_sensor_indicator = tk.Label(system_frame, width=7, height=1, text='Shutter sensor', fg='white', bg='black', font=font)
+        createToolTip(self.shutter_sensor_indicator, 'Camera turning mirror status unknown')
     
-        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
-        createToolTip(self.FV2_indicator, 'Open/close valve')
-        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
-        createToolTip(self.V5_indicator, 'Open/close valve')
-        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
-        createToolTip(self.V4_indicator, 'Open/close valve')
-        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
-        createToolTip(self.V3_indicator, 'Open/close valve')
-        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font, relief=tk.RAISED, cursor='hand1')
-        createToolTip(self.V7_indicator, 'Open/close valve')
+        self.FV2_indicator = tk.Label(system_frame, width=3, height=1, text='FV2', fg='white', bg='black', font=font, relief=tk.RAISED, borderwidth=2, cursor='hand1')
+        createToolTip(self.FV2_indicator, 'Open/close puff valve')
+        self.V5_indicator = tk.Label(system_frame, width=2, height=1, text='V5', fg='white', bg='black', font=font, relief=tk.RAISED, borderwidth=2, cursor='hand1')
+        createToolTip(self.V5_indicator, 'Open/close gas source valve')
+        self.V4_indicator = tk.Label(system_frame, width=1, height=1, text='V4', fg='white', bg='black', font=font, relief=tk.RAISED, borderwidth=2, cursor='hand1')
+        createToolTip(self.V4_indicator, 'Open/close mechanical pump valve')
+        self.V3_indicator = tk.Label(system_frame, width=2, height=1, text='V3', fg='white', bg='black', font=font, relief=tk.RAISED, borderwidth=2, cursor='hand1')
+        createToolTip(self.V3_indicator, 'Open/close plenum valve')
+        self.V7_indicator = tk.Label(system_frame, width=2, height=1, text='V7', fg='white', bg='black', font=font, relief=tk.RAISED, borderwidth=2, cursor='hand1')
+        createToolTip(self.V7_indicator, 'Open/close exhaust valve')
         self.bindValveButtons()
         
         # Entire column to the right of the live graphs
@@ -178,7 +178,7 @@ class GUI:
         fill_controls_frame = tk.Frame(controls_frame, background=gray)
         ## Line 1
         fill_controls_line1 = tk.Frame(fill_controls_frame, background=gray, pady=5)
-        desired_pressure_label = tk.Label(fill_controls_line1, text='Desired pressure (Torr):', background=gray)
+        desired_pressure_label = tk.Label(fill_controls_line1, text='Desired pressure [mbar]:', background=gray)
         self.desired_pressure_entry = ttk.Entry(fill_controls_line1, width=10, background=gray)
         ## Line 2
         fill_controls_line2 = tk.Frame(fill_controls_frame, background=gray)
@@ -188,7 +188,7 @@ class GUI:
         self.pump_out_check = tk.Checkbutton(fill_controls_line2, variable=self.pumpOut, background=gray)
         self.exhaust = tk.IntVar()
         self.exhaust.set(1)
-        exhaust_label = tk.Label(fill_controls_line2, text='Exhaust >770 Torr', background=gray)
+        exhaust_label = tk.Label(fill_controls_line2, text='Exhaust >1 bar', background=gray)
         createToolTip(exhaust_label, 'Exhaust to atmosphere before using mechanical pump')
         self.exhaust_check = tk.Checkbutton(fill_controls_line2, variable=self.exhaust, background=gray)
         ## Line 3
@@ -223,31 +223,25 @@ class GUI:
         self.T0_button = ttk.Button(action_controls_frame, text='T0 trigger', width=10, command=self.handleT0)
 
         self.fig = Figure(figsize=(3.5, 6), dpi=100, facecolor=gray)
-        self.fig.subplots_adjust(left=0.3, right=0.7, top=0.925, hspace=0.5)
+        self.fig.subplots_adjust(left=0.2, right=0.8, top=0.925, hspace=0.5)
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
-        self.ax_abs.set_ylabel('Torr')
+        self.ax_abs.yaxis.tick_right()
         self.ax_abs.set_xlabel('Seconds')
         self.ax_abs.set_title('Absolute gauge')
         self.ax_abs.grid(True, color='#c9dae5')
         self.ax_abs.patch.set_facecolor('#e3eff7')
         self.line_abs, = self.ax_abs.plot([], [], c='C0', linewidth=1)
-        self.ax_abs_conv = self.ax_abs.twinx()
-        self.ax_abs_conv.set_ylabel('Bar')
-        self.line_abs_conv, = self.ax_abs_conv.plot([], [], c='C0', alpha=0)
-        self.abs_text = self.ax_abs.text(0.97, 0.97, '? Torr\n? Bar', horizontalalignment='right', verticalalignment='top', transform=self.ax_abs.transAxes, fontsize=10)
+        self.abs_text = self.ax_abs.text(0.97, 0.97, '? mbar', horizontalalignment='right', verticalalignment='top', transform=self.ax_abs.transAxes, fontsize=10)
         # Differential pressure plot matplotlib setup
         self.ax_diff = self.fig.add_subplot(212)
-        self.ax_diff.set_ylabel('Torr')
-        self.ax_diff.set_xlabel('Seconds')
+        self.ax_diff.yaxis.tick_right()
+        self.ax_diff.set_xlabel('Time [s]')
         self.ax_diff.set_title('Differential gauge')
         self.ax_diff.grid(True, color='#e5d5c7')
         self.ax_diff.patch.set_facecolor('#f7ebe1')
         self.line_diff, = self.ax_diff.plot([], [], c='C1', linewidth=1)
-        self.ax_diff_conv = self.ax_diff.twinx()
-        self.ax_diff_conv.set_ylabel('Bar')
-        self.line_diff_conv, = self.ax_diff_conv.plot([], [], c='C1', alpha=0)
-        self.diff_text = self.ax_diff.text(0.97, 0.97, '? Torr\n? Bar', horizontalalignment='right', verticalalignment='top', transform=self.ax_diff.transAxes, fontsize=10)
+        self.diff_text = self.ax_diff.text(0.97, 0.97, '? mbar', horizontalalignment='right', verticalalignment='top', transform=self.ax_diff.transAxes, fontsize=10)
         # Plot tkinter setup
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
@@ -260,13 +254,13 @@ class GUI:
         # GUI element placement
         ## Column 1
         background.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.V3_indicator.place(relx=.476, rely=.562, relwidth=.034, relheight=.038)
+        self.V3_indicator.place(relx=.476, rely=.562, relwidth=.036, relheight=.038)
         self.V4_indicator.place(relx=.092, rely=.395, relwidth=.036, relheight=.038)
         self.V5_indicator.place(relx=.364, rely=.315, relwidth=.047, relheight=.026)
         self.V7_indicator.place(relx=.200, rely=.277, relwidth=.04, relheight=.028)
         self.FV2_indicator.place(relx=.635, rely=.067, relwidth=.05, relheight=.026)
-        self.shutter_setting_indicator.place(relx=.817, rely=.062, relwidth=.2, relheight=.026)
-        self.shutter_sensor_indicator.place(relx=.817, rely=.092, relwidth=.2, relheight=.026)
+        self.shutter_setting_indicator.place(relx=.79, rely=.067, relwidth=.2, relheight=.026)
+        self.shutter_sensor_indicator.place(relx=.79, rely=.097, relwidth=.2, relheight=.026)
         system_frame.pack(side=tk.LEFT)
         ## Column 2
         self.canvas.get_tk_widget().pack(side=tk.LEFT)
@@ -287,8 +281,8 @@ class GUI:
         ttk.Separator(controls_frame, orient=tk.HORIZONTAL).pack(side=tk.TOP, fill=tk.X)
         ### Puff controls frame
         tk.Label(puff_controls_frame, text='Enable', background=gray).grid(row=0, column=7)
-        tk.Label(puff_controls_frame, text='Start (s)', background=gray).grid(row=0, column=8)
-        tk.Label(puff_controls_frame, text='Duration (s)', background=gray).grid(row=0, column=9)
+        tk.Label(puff_controls_frame, text='Start [s]', background=gray).grid(row=0, column=8)
+        tk.Label(puff_controls_frame, text='Duration [s]', background=gray).grid(row=0, column=9)
         tk.Label(puff_controls_frame, text='Puff 1', background=gray).grid(row=1, column=6)
         tk.Label(puff_controls_frame, text='Puff 2', background=gray).grid(row=2, column=6)
         self.enable_puff_1_check.grid(row=1, column=7)
@@ -476,19 +470,13 @@ class GUI:
         self.line_abs.set_data(relative_times, self.absPressures)
         self.ax_abs.relim()
         self.ax_abs.autoscale_view(True,True,True)
-        self.line_abs_conv.set_data(relative_times, np.array(self.absPressures)*TORR_TO_BAR)
-        self.ax_abs_conv.relim()
-        self.ax_abs_conv.autoscale_view(True,True,True)
-        self.abs_text.set_text('%.3g Torr\n%.3g Bar' % (self.absPressures[-1], self.absPressures[-1]*TORR_TO_BAR))
+        self.abs_text.set_text('%.4g mbar' % self.absPressures[-1])
         
         # Update differential gauge plot
         self.line_diff.set_data(relative_times, self.diffPressures)
         self.ax_diff.relim()
         self.ax_diff.autoscale_view(True,True,True)
-        self.line_diff_conv.set_data(relative_times, np.array(self.diffPressures)*TORR_TO_BAR)
-        self.ax_diff_conv.relim()
-        self.ax_diff_conv.autoscale_view(True,True,True)
-        self.diff_text.set_text('%.3g Torr\n%.3g Bar' % (self.diffPressures[-1], self.diffPressures[-1]*TORR_TO_BAR))
+        self.diff_text.set_text('%.4g mbar' % self.diffPressures[-1])
         
         self.fig.canvas.draw_idle()
 
