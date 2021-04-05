@@ -228,7 +228,9 @@ class GUI:
         self.fig.subplots_adjust(left=0.2, right=0.8, top=0.925, hspace=0.5)
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
-        self.ax_abs.yaxis.tick_right()
+        self.ax_abs.yaxis.set_ticks_position('both')
+        label = self.ax_abs.yaxis.get_ticklabels()
+        self.ax_abs.yaxis.set_tick_params(which='both', labelleft=label, labelright=label)
         self.ax_abs.set_xlabel('Time [s]')
         self.ax_abs.set_title('Absolute gauge')
         self.ax_abs.grid(True, color='#c9dae5')
@@ -237,7 +239,9 @@ class GUI:
         self.abs_text = self.ax_abs.text(0.97, 0.97, '? mbar', horizontalalignment='right', verticalalignment='top', transform=self.ax_abs.transAxes, fontsize=10)
         # Differential pressure plot matplotlib setup
         self.ax_diff = self.fig.add_subplot(212)
-        self.ax_diff.yaxis.tick_right()
+        self.ax_diff.yaxis.set_ticks_position('both')
+        label = self.ax_diff.yaxis.get_ticklabels()
+        self.ax_diff.yaxis.set_tick_params(which='both', labelleft=label, labelright=label)
         self.ax_diff.set_xlabel('Time [s]')
         self.ax_diff.set_title('Differential gauge')
         self.ax_diff.grid(True, color='#e5d5c7')
