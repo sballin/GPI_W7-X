@@ -1,20 +1,6 @@
 # W7-X gas puff imaging diagnostic codebase
 
-![](https://user-images.githubusercontent.com/2719004/113524015-d01bdb00-9579-11eb-89ab-cbbd38df2446.png)
-
-## Usage
-
-The "middle server" bridges communication between the gui and RP, and will eventually take care of uploading data to the Archive. The middle server and the GUI can be run on different computers or the same computer. 
-
-You can run the middle server with
-
-    python3 middle_server.py
-
-In a separate terminal, you can run the GUI with
-
-    python3 gui.py
-
-## Installation
+## Installing the GPI control system code
 
 Clone this repo or download the files. middle_server.py and gui.py each depend on other files in the repo. Install the required python packages with
 
@@ -24,6 +10,27 @@ Set the correct addresses in middle_server.py and gui.py:
 
 * middle_server.py must have RP_HOSTNAME set to the hostname or IP address of the Red Pitaya
 * gui.py must have MIDDLE_SERVER_ADDR set to "hostname_or_ip:50000" where hostname_or_ip is for the machine on which the middle server is running
+
+## Using the GPI control system code
+
+A "middle server" is required to bridge communication between the GUI and RP, and will eventually take care of uploading data to the Archive. The middle server and the GUI can be run on different computers or the same computer. 
+
+You can run the middle server with
+
+    python3 middle_server.py
+
+In a separate terminal, you can run the GUI with
+
+    python3 gui.py
+
+The GUI looks like this:
+
+![](https://user-images.githubusercontent.com/2719004/113524015-d01bdb00-9579-11eb-89ab-cbbd38df2446.png)
+
+* For valve and shutter buttons in the diagram, red = closed, green = open, and black = unknown
+* Valve and shutter buttons can be clicked to toggle between open/closed
+* The "Cancel and reset valves" button can be clicked to interrupt any pump/fill/puff operation and reset the valves to the default configuration
+* You can hover the mouse over some UI elements to see help text
 
 ### Hardware and software T0/T1 triggers
 
@@ -49,7 +56,7 @@ Red Pitaya outputs are connected to the black box, which contains
     - Fast circuit board 2 (backup, not currently in use)
 - "Card 2": slow valve circuit board
 
-For more information, see the [circuit schematics](https://drive.google.com/file/d/1h2XiICZbf8ahQjyZW7o4v7BePNzfH2qf/view) for the black box.
+For more information, see the [circuit schematics](https://drive.google.com/file/d/1xhCGSTdwKQEqzEBjUsiXuTVbSfdoP1aC/view) for the black box.
 
 ### Slow valves
 
