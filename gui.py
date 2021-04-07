@@ -228,6 +228,7 @@ class GUI:
         self.fig.subplots_adjust(left=0.2, right=0.8, top=0.925, hspace=0.5)
         # Absolute pressure plot matplotlib setup
         self.ax_abs = self.fig.add_subplot(211)
+        self.ax_abs.margins(y=0.2)
         self.ax_abs.yaxis.set_ticks_position('both')
         label = self.ax_abs.yaxis.get_ticklabels()
         self.ax_abs.yaxis.set_tick_params(which='both', labelleft=label, labelright=label)
@@ -239,6 +240,7 @@ class GUI:
         self.abs_text = self.ax_abs.text(0.97, 0.97, '? mbar', horizontalalignment='right', verticalalignment='top', transform=self.ax_abs.transAxes, fontsize=10)
         # Differential pressure plot matplotlib setup
         self.ax_diff = self.fig.add_subplot(212)
+        self.ax_diff.margins(y=0.2)
         self.ax_diff.yaxis.set_ticks_position('both')
         label = self.ax_diff.yaxis.get_ticklabels()
         self.ax_diff.yaxis.set_tick_params(which='both', labelleft=label, labelright=label)

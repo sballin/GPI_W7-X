@@ -320,8 +320,10 @@ class RPServer:
         initialAbsPressure = 300
         if not self.absPressures:
             # Initialize fake data
-            self.absPressures = list(initialAbsPressure*np.random.normal(1, 0.05, 10000))
-            self.diffPressures = list(np.random.normal(1, 0.1, 10000))
+            pAbs = list(initialAbsPressure*np.random.normal(1, 0.05, 10000))
+            pDiff = list(np.random.normal(1, 0.1, 10000))
+            self.absPressures = pAbs
+            self.diffPressures = pDiff
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
             self.lastFakeDataTime = now
         else:
@@ -336,16 +338,20 @@ class RPServer:
             elif valves == ['open', 'close', 'open', 'close', 'close'] and currentPressure < 4*1013:
                 dp = 0.1*(4*1013-currentPressure)
             dataLen = int((now-self.lastFakeDataTime)*PRESSURE_HZ)
-            self.absPressures.extend([(currentPressure+i*dp/PRESSURE_HZ)*np.random.normal(1, 0.05) for i in range(dataLen)])
-            self.diffPressures.extend(np.random.normal(1, 0.01, dataLen))
+            pAbs = [(currentPressure+i*dp/PRESSURE_HZ)*np.random.normal(1, 0.05) for i in range(dataLen)]
+            self.absPressures.extend(pAbs)
+            pDiff = np.random.normal(1, 0.01, dataLen)
+            self.diffPressures.extend(pDiff)
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
             self.lastFakeDataTime = now
                
+        self.downsamplePressureData(now, pAbs, pDiff)
         self.prunePressureData(now)
         
     def getPressureData(self):
         now = time.time()
         delta = 1/PRESSURE_HZ
+        pAbs = pDiff = None
         try:
             # Get data from RP
             # This may raise an exception due to network timeout
@@ -364,24 +370,27 @@ class RPServer:
             self.absPressures.extend(pAbs)
             self.diffPressures.extend(pDiff)
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta).tolist()
-            
-            # Downsample readings
-            pNewTimes = np.arange(now-delta*(len(pAbs)-1), now+delta, delta).tolist()
-            self.downsamplingQueue.extend(list(zip(pNewTimes, pAbs, pDiff)))
-            if len(self.downsamplingQueue) > DOWNSAMPLE_N:
-                for i in range(len(self.downsamplingQueue)//DOWNSAMPLE_N):
-                    latestDownsampled = np.array(self.downsamplingQueue[i*DOWNSAMPLE_N:(i+1)*DOWNSAMPLE_N]).mean(axis=0)
-                    self.pressuresDownsampled.append(latestDownsampled.tolist())
-                # Remove processed readings from the downsampling queue
-                self.downsamplingQueue = self.downsamplingQueue[(i+1)*DOWNSAMPLE_N:]
         except Exception as e:
             # Log disconnection and attempt to reconnect
             self.addToLog(str(e))
-            self.addToLog('Attempting to reconnect to RP')
+            self.addToLog('Get pressure data failed. Attempting to reconnect to RP...')
             rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
             self.RPKoheron = GPI_RP(rpConnection)
         
+        if pAbs and pDiff:
+            self.downsamplePressureData(now, pAbs, pDiff)
         self.prunePressureData(now)
+        
+    def downsamplePressureData(self, now, pAbs, pDiff):
+        delta = 1/PRESSURE_HZ
+        pNewTimes = np.arange(now-delta*(len(pAbs)-1), now+delta, delta).tolist()
+        self.downsamplingQueue.extend(list(zip(pNewTimes, pAbs, pDiff)))
+        if len(self.downsamplingQueue) > DOWNSAMPLE_N:
+            for i in range(len(self.downsamplingQueue)//DOWNSAMPLE_N):
+                latestDownsampledMean = np.array(self.downsamplingQueue[i*DOWNSAMPLE_N:(i+1)*DOWNSAMPLE_N]).mean(axis=0)
+                self.pressuresDownsampled.append(latestDownsampledMean.tolist())
+            # Remove processed readings from the downsampling queue
+            self.downsamplingQueue = self.downsamplingQueue[(i+1)*DOWNSAMPLE_N:]
             
     def prunePressureData(self, now):
         if self.state != 'shot': 
