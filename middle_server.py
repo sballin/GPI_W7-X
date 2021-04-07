@@ -340,7 +340,7 @@ class RPServer:
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
             self.lastFakeDataTime = now
                
-        self.processPressureData(now)
+        self.prunePressureData(now)
         
     def getPressureData(self):
         now = time.time()
@@ -351,9 +351,9 @@ class RPServer:
             combined_pressure_history = self.RPKoheron.get_GPI_data()
                     
             # Add fast readings
-            self.absPressures.extend(abs_mbar(combined_pressure_history))
-            self.diffPressures.extend(diff_mbar(combined_pressure_history))
-            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+            self.absPressures.extend(abs_mbar(combined_pressure_history).tolist())
+            self.diffPressures.extend(diff_mbar(combined_pressure_history).tolist())
+            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta).tolist()
             
             if len(combined_pressure_history) == 50000:
                 # Show this message except during program startup, when the FPGA queue is normally full
@@ -368,23 +368,15 @@ class RPServer:
             rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
             self.RPKoheron = GPI_RP(rpConnection)
         
-        self.processPressureData(now)
+        self.prunePressureData(now)
             
-    def processPressureData(self, now):
+    def prunePressureData(self, now):
         # Remove fast readings older than READING_HISTORY seconds, except during a shot cycle
         if self.state != 'shot': 
             range_start = find_nearest(np.array(self.pressureTimes)-now, -READING_HISTORY)
             self.pressureTimes = self.pressureTimes[range_start:]
             self.absPressures = self.absPressures[range_start:]
             self.diffPressures = self.diffPressures[range_start:]
-            
-        # Calculate moving mean of 1000 samples (0.1 s) to send to GUI
-        if len(self.pressureTimes) > 1000:
-            self.GUIPressureData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
-                                            move_mean(self.absPressures, 1000)[::1000].tolist(),
-                                            move_mean(self.diffPressures, 1000)[::1000].tolist()))
-        else:
-            self.GUIPressureData = [[],[],[]]
         
     def setShutter(self, state):
         if state == 'open':
@@ -411,6 +403,14 @@ class RPServer:
         # Copy and flush message queue
         messageQueue = self.messageQueue
         self.messageQueue = []
+        
+        # Calculate moving mean of 1000 samples (0.1 s) to send to GUI
+        if len(self.pressureTimes) > 1000:
+            self.GUIPressureData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
+                                            move_mean(self.absPressures, 1000)[::1000].tolist(),
+                                            move_mean(self.diffPressures, 1000)[::1000].tolist()))
+        else:
+            self.GUIPressureData = [[],[],[]]
         
         return {'shutter_setting': self.getShutterSetting(),
                 'shutter_sensor': self.getShutterSensor(),
