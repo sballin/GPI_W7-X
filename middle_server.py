@@ -15,7 +15,6 @@ import xmlrpc.server
 import logging
 import koheron
 import numpy as np
-from bottleneck import move_mean
 from GPI_RP.GPI_RP import GPI_RP
 
 
@@ -34,6 +33,7 @@ MAX_FILL = 3*1013 # mbar, max pressure that user can request
 READING_HISTORY = 30 # seconds of pressure readings to keep in memory
 MAX_PUFF_DURATION = 2 # seconds max for FV2 to remain open for an individual puff
 PRESSURE_HZ = 10000 # FPGA sampling rate for absolute and differential pressure gauges
+DOWNSAMPLE_N = 1000 # number of pressure measurements to average when downsampling
 TORR_TO_MBAR = 1.33322
     
 
@@ -93,8 +93,9 @@ class RPServer:
         self.gotFirstQueue = False
         logging.basicConfig(filename=LOG_FILE, format='%(message)s', level=logging.DEBUG)
         
-        # Queues emptied every time the GUI asks for more data to display
-        self.GUIPressureData = []
+        # Arrays to store a 10x downsampled version of the pressure readings
+        self.downsamplingQueue = []
+        self.pressuresDownsampled = []
         # Queue of (time to execute, function, args) objects like threading.Timer does. We want to 
         # avoid threading for Koheron interactions because of potential bugs
         self.taskQueue = []
@@ -349,18 +350,30 @@ class RPServer:
             # Get data from RP
             # This may raise an exception due to network timeout
             combined_pressure_history = self.RPKoheron.get_GPI_data()
-                    
-            # Add fast readings
-            self.absPressures.extend(abs_mbar(combined_pressure_history).tolist())
-            self.diffPressures.extend(diff_mbar(combined_pressure_history).tolist())
-            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta).tolist()
-            
+            # Show warning if the RP data queue is full, which means some data has been lost
             if len(combined_pressure_history) == 50000:
                 # Show this message except during program startup, when the FPGA queue is normally full
                 if self.gotFirstQueue:
                     self.addToLog('Lost some data due to network lag')
                 else:
                     self.gotFirstQueue = True
+                    
+            # Add fast readings
+            pAbs = abs_mbar(combined_pressure_history).tolist()
+            pDiff = diff_mbar(combined_pressure_history).tolist()
+            self.absPressures.extend(pAbs)
+            self.diffPressures.extend(pDiff)
+            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta).tolist()
+            
+            # Downsample readings
+            pNewTimes = np.arange(now-delta*(len(pAbs)-1), now+delta, delta).tolist()
+            self.downsamplingQueue.extend(list(zip(pNewTimes, pAbs, pDiff)))
+            if len(self.downsamplingQueue) > DOWNSAMPLE_N:
+                for i in range(len(self.downsamplingQueue)//DOWNSAMPLE_N):
+                    latestDownsampled = np.array(self.downsamplingQueue[i*DOWNSAMPLE_N:(i+1)*DOWNSAMPLE_N]).mean(axis=0)
+                    self.pressuresDownsampled.append(latestDownsampled.tolist())
+                # Remove processed readings from the downsampling queue
+                self.downsamplingQueue = self.downsamplingQueue[(i+1)*DOWNSAMPLE_N:]
         except Exception as e:
             # Log disconnection and attempt to reconnect
             self.addToLog(str(e))
@@ -371,12 +384,16 @@ class RPServer:
         self.prunePressureData(now)
             
     def prunePressureData(self, now):
-        # Remove fast readings older than READING_HISTORY seconds, except during a shot cycle
         if self.state != 'shot': 
+            # Remove fast readings older than READING_HISTORY seconds
             range_start = find_nearest(np.array(self.pressureTimes)-now, -READING_HISTORY)
             self.pressureTimes = self.pressureTimes[range_start:]
             self.absPressures = self.absPressures[range_start:]
             self.diffPressures = self.diffPressures[range_start:]
+            # Prune old downsampled readings
+            for i, tpp in enumerate(self.pressuresDownsampled.copy()):
+                if now - tpp[0] > READING_HISTORY:
+                    self.pressuresDownsampled.pop(i)
         
     def setShutter(self, state):
         if state == 'open':
@@ -404,14 +421,6 @@ class RPServer:
         messageQueue = self.messageQueue
         self.messageQueue = []
         
-        # Calculate moving mean of 1000 samples (0.1 s) to send to GUI
-        if len(self.pressureTimes) > 1000:
-            self.GUIPressureData = list(zip(move_mean(self.pressureTimes, 1000)[::1000].tolist(), 
-                                            move_mean(self.absPressures, 1000)[::1000].tolist(),
-                                            move_mean(self.diffPressures, 1000)[::1000].tolist()))
-        else:
-            self.GUIPressureData = [[],[],[]]
-        
         return {'shutter_setting': self.getShutterSetting(),
                 'shutter_sensor': self.getShutterSensor(),
                 'V3': self.getValveStatus('V3'),
@@ -419,7 +428,7 @@ class RPServer:
                 'V5': self.getValveStatus('V5'),
                 'V7': self.getValveStatus('V7'),
                 'FV2': self.getValveStatus('FV2'),
-                'pressures_history': self.GUIPressureData,
+                'pressures_history': self.pressuresDownsampled,
                 'messages': messageQueue,
                 'state': self.state,
                 'w7x_permission': str(self.RPKoheron.get_W7X_permission()),
@@ -516,7 +525,7 @@ class RPServer:
         # Save shot data
         start = find_nearest(np.array(self.pressureTimes), self.lastT1)
         end = find_nearest(np.array(self.pressureTimes), self.lastTdone)
-        t = self.pressureTimes[start:end].tolist().copy()
+        t = self.pressureTimes[start:end].copy()
         dp = self.diffPressures[start:end].copy()
         self.lastShotData = [self.lastT1, t, dp]
         
