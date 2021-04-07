@@ -1,4 +1,4 @@
-# W7-X gas puff imaging diagnostic codebase
+# W7-X gas puff imaging diagnostic
 
 ## Installing the GPI control system code
 
@@ -8,7 +8,7 @@ Clone this repo or download the files. middle_server.py and gui.py each depend o
 
 Set the correct addresses in middle_server.py and gui.py:
 
-* middle_server.py must have RP_HOSTNAME set to the hostname or IP address of the Red Pitaya
+* middle_server.py must have RP_HOSTNAME set to the hostname or IP address of the Red Pitaya (RP)
 * gui.py must have MIDDLE_SERVER_ADDR set to "hostname_or_ip:50000" where hostname_or_ip is for the machine on which the middle server is running
 
 ## Using the GPI control system code
@@ -42,14 +42,14 @@ The user can switch between hardware and software T1 modes by modifying the SOFT
 
 ## Overview
 
-The Red Pitaya running the code in koheron-sdk/instruments/GPI_RP has two jobs:
+The RP running the code in koheron-sdk/instruments/GPI_RP has two jobs:
 
 - Send open or close signals to several different valves
 - Monitor pressure readings from two gauges using two fast analog inputs
 
 ## Valve control
 
-Red Pitaya outputs are connected to the black box, which contains
+RP outputs are connected to the black box, which contains
 
 - "Card 1"
     - Fast circuit board 1
