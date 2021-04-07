@@ -35,53 +35,39 @@ READING_HISTORY = 30 # seconds of pressure readings to keep in memory
 MAX_PUFF_DURATION = 2 # seconds max for FV2 to remain open for an individual puff
 PRESSURE_HZ = 10000 # FPGA sampling rate for absolute and differential pressure gauges
 TORR_TO_MBAR = 1.33322
+    
 
-
-def int_to_float(reading):
-    return 2/(2**14-1)*signed_conversion(reading)
+def twos_complement(arr, num_bits=14):
+    arr = arr.astype(np.int32) # if arr is uint32, output is wrong if we don't do this
+    sign_mask = 1 << (num_bits - 1)  # For example 0b100000000
+    bits_mask = sign_mask - 1  # For example 0b011111111
+    return np.bitwise_and(arr, bits_mask) - np.bitwise_and(arr, sign_mask)
     
     
-def signed_conversion(reading):
-    '''
-    Convert Red Pitaya binary output to a uint32.
-    '''
-    binConv = ''
-    if int(reading[0], 2) == 1:
-        for bit in reading[1::]:
-            if bit == '1':
-                binConv += '0'
-            else:
-                binConv += '1'
-        intNum = -int(binConv, 2) - 1
-    else:
-        for bit in reading[1::]:
-            binConv += bit
-        intNum = int(binConv, 2)
-    return intNum
-    
-    
-def abs_bin_to_mbar(binary_string):
+def abs_mbar(arr):
+    # Get parts of binary vals corresponding to abs measurement (digits 5 through 19)
+    arr = np.right_shift(arr, 14)
+    # Convert from unsigned to signed integers
+    arr = twos_complement(arr, 14)
+    # Convert to float
+    f = 2/(2**14-1)*arr
     # Calibration for IN 1 of W7XRP2 with a 0.252 divider 
-    abs_voltage = 0.0661+4.526*int_to_float(binary_string) # 
+    abs_voltage = 0.0661+4.526*f
     # 500 Torr/Volt
     return 500*abs_voltage*TORR_TO_MBAR
     
     
-def diff_bin_to_mbar(binary_string):
+def diff_mbar(arr):
+    # Get parts of binary vals corresponding to diff measurement (last 14 digits)
+    arr = np.bitwise_and(arr, 0b11111111111111)
+    # Convert from unsigned to signed integers
+    arr = twos_complement(arr, 14)
+    # Convert to float
+    f = 2/(2**14-1)*arr
     # Calibration for IN 2 of W7XRP2 with a 0.342 divider
-    diff_voltage = 0.047+3.329*int_to_float(binary_string) 
+    diff_voltage = 0.047+3.329*f
     # 10 Torr/Volt
     return 10*diff_voltage*TORR_TO_MBAR
-    
-    
-def abs_mbar(combined_string):
-    abs_binary_string = '{0:032b}'.format(combined_string)[-28:-14]
-    return abs_bin_to_mbar(abs_binary_string)
-    
-    
-def diff_mbar(combined_string):
-    diff_binary_string = '{0:032b}'.format(combined_string)[-14:]
-    return diff_bin_to_mbar(diff_binary_string)
     
     
 def find_nearest(array, value):
@@ -365,8 +351,8 @@ class RPServer:
             combined_pressure_history = self.RPKoheron.get_GPI_data()
                     
             # Add fast readings
-            self.absPressures.extend([abs_mbar(i) for i in combined_pressure_history])
-            self.diffPressures.extend([diff_mbar(i) for i in combined_pressure_history])
+            self.absPressures.extend(abs_mbar(combined_pressure_history))
+            self.diffPressures.extend(diff_mbar(combined_pressure_history))
             self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
             
             if len(combined_pressure_history) == 50000:
