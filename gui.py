@@ -17,7 +17,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
-MIDDLE_SERVER_ADDR = 'http://127.0.0.1:50000'
+MIDDLE_SERVER_ADDR = 'http://0.0.0.0:50000'
 SAVE_FOLDER = 'shot_data' # for puff pressure data
 SOFTWARE_T1 = True  # send a T1 trigger through software (don't wait for hardware trigger)
 PRETRIGGER = 5 # seconds between T0 and T1 (for T1 timing if SOFTWARE_T1 or for post-shot actions if not SOFTWARE_T1)

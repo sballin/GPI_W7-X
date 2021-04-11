@@ -23,7 +23,7 @@ RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
 LOG_FILE = 'log.txt'
 PUMPED_OUT = 0 # mbar, pressure at which to stop pumping out
 FILL_MARGIN = 5 # mbar, stop this amount short of desired fill pressure to avoid overshoot
-SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
+SIMULATE_RP = True # create fake data to test pump/puff methods, gui...
 ANNOUNCE_HEALTH = False # regularly log info about middle server health
 
 # Less commonly changed user settings
@@ -94,7 +94,7 @@ class RPServer:
         logging.basicConfig(filename=LOG_FILE, format='%(message)s', level=logging.DEBUG)
         
         # Arrays to store a 10x downsampled version of the pressure readings
-        self.downsamplingQueue = []
+        self.downsamplingQueue = None
         self.pressuresDownsampled = []
         # Queue of (time to execute, function, args) objects like threading.Timer does. We want to 
         # avoid threading for Koheron interactions because of potential bugs
@@ -105,6 +105,7 @@ class RPServer:
         self.pressureTimes = []
         self.absPressures = []
         self.diffPressures = []
+        self.pressures = None
         # Keep track of server health
         self.mainloopTimes = []
         # Variables to record times to return appropriate data to GUI post-puff
@@ -114,7 +115,7 @@ class RPServer:
         self.lastShotData = None
         
         # Create new xmlrpc server and register RPServer with it to expose RPServer functions
-        address = ('127.0.0.1', 50000)
+        address = ('0.0.0.0', 50000)
         self.RPCServer = xmlrpc.server.SimpleXMLRPCServer(address, allow_none=True, logRequests=False)
         self.RPCServer.register_instance(self)
         # This timeout is how long handle_request() blocks the main thread even when there are no requests
@@ -230,7 +231,7 @@ class RPServer:
         '''
         Return average pressure over the last 0.1 seconds.
         '''
-        return np.mean(self.absPressures[-1000:])
+        return np.mean(self.pressures[-1000:,1])
         
     def lowerPressure(self, desiredPressure, fillPressure):
         '''
@@ -318,13 +319,13 @@ class RPServer:
         now = time.time()
         delta = 1/PRESSURE_HZ
         initialAbsPressure = 300
-        if not self.absPressures:
+        if self.pressures is None:
             # Initialize fake data
             pAbs = list(initialAbsPressure*np.random.normal(1, 0.05, 10000))
             pDiff = list(np.random.normal(1, 0.1, 10000))
-            self.absPressures = pAbs
-            self.diffPressures = pDiff
-            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+            pNewTimes = np.arange(-len(pAbs)+1, 1)*delta+now
+            newData = np.column_stack((pNewTimes, pAbs, pDiff))
+            self.pressures = newData
             self.lastFakeDataTime = now
         else:
             # Continue creaking fake data
@@ -339,19 +340,19 @@ class RPServer:
                 dp = 0.1*(4*1013-currentPressure)
             dataLen = int((now-self.lastFakeDataTime)*PRESSURE_HZ)
             pAbs = [(currentPressure+i*dp/PRESSURE_HZ)*np.random.normal(1, 0.05) for i in range(dataLen)]
-            self.absPressures.extend(pAbs)
             pDiff = np.random.normal(1, 0.01, dataLen)
-            self.diffPressures.extend(pDiff)
-            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta)
+            pNewTimes = np.arange(-len(pAbs)+1, 1)*delta+now
+            newData = np.column_stack((pNewTimes, pAbs, pDiff))
+            self.pressures = np.vstack((self.pressures, newData))
             self.lastFakeDataTime = now
                
-        self.downsamplePressureData(now, pAbs, pDiff)
+        self.downsamplePressureData(now, newData)
         self.prunePressureData(now)
         
     def getPressureData(self):
         now = time.time()
         delta = 1/PRESSURE_HZ
-        pAbs = pDiff = None
+        newData = None
         try:
             # Get data from RP
             # This may raise an exception due to network timeout
@@ -365,11 +366,16 @@ class RPServer:
                     self.gotFirstQueue = True
                     
             # Add fast readings
-            pAbs = abs_mbar(combined_pressure_history).tolist()
-            pDiff = diff_mbar(combined_pressure_history).tolist()
-            self.absPressures.extend(pAbs)
-            self.diffPressures.extend(pDiff)
-            self.pressureTimes = np.arange(now-delta*(len(self.absPressures)-1), now+delta, delta).tolist()
+            pAbs = abs_mbar(combined_pressure_history)
+            pDiff = diff_mbar(combined_pressure_history)
+            pNewTimes = np.arange(-len(pAbs)+1, 1)*delta+now
+            newData = np.column_stack((pNewTimes, pAbs, pDiff))
+            if self.pressures is None:
+                self.pressures = newData
+            else:
+                self.pressures = np.vstack((self.pressures, newData))
+            pTimes = np.arange(-len(self.pressures)+1, 1)*delta+now
+            self.pressures[:,0] = pTimes
         except Exception as e:
             # Log disconnection and attempt to reconnect
             self.addToLog(str(e))
@@ -377,17 +383,19 @@ class RPServer:
             rpConnection = koheron.connect(RP_HOSTNAME, name='GPI_RP')
             self.RPKoheron = GPI_RP(rpConnection)
         
-        if pAbs and pDiff:
-            self.downsamplePressureData(now, pAbs, pDiff)
+        if newData is not None:
+            self.downsamplePressureData(now, newData)
         self.prunePressureData(now)
         
-    def downsamplePressureData(self, now, pAbs, pDiff):
+    def downsamplePressureData(self, now, newData):
         delta = 1/PRESSURE_HZ
-        pNewTimes = np.arange(now-delta*(len(pAbs)-1), now+delta, delta).tolist()
-        self.downsamplingQueue.extend(list(zip(pNewTimes, pAbs, pDiff)))
-        if len(self.downsamplingQueue) > DOWNSAMPLE_N:
+        if self.downsamplingQueue is None:
+            self.downsamplingQueue = newData
+        else:
+            self.downsamplingQueue = np.vstack((self.downsamplingQueue, newData))
+        if self.downsamplingQueue.shape[0] > DOWNSAMPLE_N:
             for i in range(len(self.downsamplingQueue)//DOWNSAMPLE_N):
-                latestDownsampledMean = np.array(self.downsamplingQueue[i*DOWNSAMPLE_N:(i+1)*DOWNSAMPLE_N]).mean(axis=0)
+                latestDownsampledMean = self.downsamplingQueue[i*DOWNSAMPLE_N:(i+1)*DOWNSAMPLE_N].mean(axis=0)
                 self.pressuresDownsampled.append(latestDownsampledMean.tolist())
             # Remove processed readings from the downsampling queue
             self.downsamplingQueue = self.downsamplingQueue[(i+1)*DOWNSAMPLE_N:]
@@ -395,14 +403,11 @@ class RPServer:
     def prunePressureData(self, now):
         if self.state != 'shot': 
             # Remove fast readings older than READING_HISTORY seconds
-            range_start = find_nearest(np.array(self.pressureTimes)-now, -READING_HISTORY)
-            self.pressureTimes = self.pressureTimes[range_start:]
-            self.absPressures = self.absPressures[range_start:]
-            self.diffPressures = self.diffPressures[range_start:]
+            range_start = find_nearest(self.pressures[:,0]-now, -READING_HISTORY)
+            self.pressures = self.pressures[range_start:]
             # Prune old downsampled readings
-            for i, tpp in enumerate(self.pressuresDownsampled.copy()):
-                if now - tpp[0] > READING_HISTORY:
-                    self.pressuresDownsampled.pop(i)
+            range_start = find_nearest(np.array(self.pressuresDownsampled)[:,0]-now, -READING_HISTORY)
+            self.pressuresDownsampled = self.pressuresDownsampled[range_start:]
         
     def setShutter(self, state):
         if state == 'open':
@@ -532,10 +537,10 @@ class RPServer:
         self.setPermission(2, False)
         
         # Save shot data
-        start = find_nearest(np.array(self.pressureTimes), self.lastT1)
-        end = find_nearest(np.array(self.pressureTimes), self.lastTdone)
-        t = self.pressureTimes[start:end].copy()
-        dp = self.diffPressures[start:end].copy()
+        start = find_nearest(self.pressures[:,0], self.lastT1)
+        end = find_nearest(self.pressures[:,0], self.lastTdone)
+        t = self.pressures[start:end,0].tolist()
+        dp = self.pressures[start:end,2].tolist()
         self.lastShotData = [self.lastT1, t, dp]
         
     def getLastShotData(self):
