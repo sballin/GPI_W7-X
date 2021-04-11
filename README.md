@@ -47,7 +47,7 @@ The RP running the code in koheron-sdk/instruments/GPI_RP has two jobs:
 - Send open or close signals to several different valves
 - Monitor pressure readings from two gauges using two fast analog inputs
 
-For information on the pins and their various functions and names, see this [documentation](koheron-sdk/pinConfig.rst).
+For information on the pins and their various functions and names, see this [documentation](koheron-sdk/pinConfig.md).
 
 ## Valve control
 

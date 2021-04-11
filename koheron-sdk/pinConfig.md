@@ -1,62 +1,33 @@
-####################################################################################
-1. State of the I/Os after all the power rails are powered and before configuration?
-####################################################################################
+## 1. State of the I/Os after all the power rails are powered and before configuration?
 
 SOURCE: https://www.xilinx.com/support/answers/50802.html
 
-The recommended power-on sequence is VCCINT, VCCBRAM, VCCAUX, VCCAUX_IO, and VCCO to achieve minimum current draw and
-ensure that the I/Os are 3-stated at power-on.
+The recommended power-on sequence is VCCINT, VCCBRAM, VCCAUX, VCCAUX_IO, and VCCO to achieve minimum current draw and ensure that the I/Os are 3-stated at power-on.
 
-The 7 series FPGAs contain a pin called PUDC_B. When PUDC_B is Low, internal pull-up resistors are enabled on each
-SelectIO pin. When PUDC_B is High, internal pull-up resistors are disabled on each SelectIO pin. The state of this pin
-effects the state of the I/O from power-on until configuration completes. Therefore, the I/Os will be 3-stated after
-power-on when PUDC is High.
+The 7 series FPGAs contain a pin called PUDC_B. When PUDC_B is Low, internal pull-up resistors are enabled on each SelectIO pin. When PUDC_B is High, internal pull-up resistors are disabled on each SelectIO pin. The state of this pin effects the state of the I/O from power-on until configuration completes. Therefore, the I/Os will be 3-stated after power-on when PUDC is High.
 
 The state of the I/O prior to the rails being powered is not guaranteed.
 
-.. note::
-
-    Due to the presence of the clamp diode, if the I/Os are driven before Vcco powered this will reverse bias the
-    Vcco rail. For further information, see (Xilinx Answer 45985).
+.. note:: Due to the presence of the clamp diode, if the I/Os are driven before Vcco powered this will reverse bias the Vcco rail. For further information, see (Xilinx Answer 45985).
 
 SOURCE: https://www.xilinx.com/support/documentation/user_guides/ug865-Zynq-7000-Pkg-Pinout.pdf
-+----------+----------------+-----------+----------------------------------------------------------+
-| Pin Name | Type           | Direction | Description                                              |
-|          |                |           | Pull-Up During Configuration (bar)                       |
-|          |                |           | Active-Low PUDC_B input enables internal pull-up         |
-|          |                |           | resistors on the SelectIO pins after power-up and during |
-|          |                |           | configuration.                                           |
-| PUDC_B   | Multi-function | Input     |   ° When PUDC_B is Low, internal pull-up resistors       |
-|          |                |           |     are enabled on each SelectIO pin.                    |
-|          |                |           |   ° When PUDC_B is High, internal pull-up resistors are  |
-|          |                |           |     disabled on each SelectIO pin.                       |
-|          |                |           | PUDC_B must be tied either directly (or through a 1KΩ or |
-|          |                |           | less resistor) to VCCO_34 or GND.                        |
-|          |                |           | CAUTION! Do not allow this pin to float before and       |
-|          |                |           | during configuration.                                    |
-+----------+----------------+-----------+----------------------------------------------------------+
 
-.. note::
+| Pin Name | Type           | Direction | Description         |                                     
+|----------|----------------|-----------|----------------------------------------------------------|
+| PUDC_B   | Multi-function | Input     | Pull-Up During Configuration (bar). Active-Low PUDC_B input enables internal pull-up resistors on the SelectIO pins after power-up and during configuration. When PUDC_B is Low, internal pull-up resistors are enabled on each SelectIO pin. When PUDC_B is High, internal pull-up resistors are disabled on each SelectIO pin. PUDC_B must be tied either directly (or through a 1KΩ or less resistor) to VCCO_34 or GND. CAUTION! Do not allow this pin to float before and during configuration.                                    |
 
-    On the Red Pitaya board PUDC_B pin is grounded through a capacitor C100. If needed it can be changed, more 
-    information can be found at http://redpitaya.readthedocs.io/en/latest/developerGuide/125-14/shem.html.
+Note: On the Red Pitaya board PUDC_B pin is grounded through a capacitor C100. If needed it can be changed, more information can be found at http://redpitaya.readthedocs.io/en/latest/developerGuide/125-14/shem.html.
 
-################################
-2. IO Assignments by Package Pin
-################################
+## 2. IO Assignments by Package Pin
 
 A report on current PIN configuration can be generated during synthesis by adding 
-'report_io -file $path_out/post_imp_io.rpt' 
-to the 
-'fpga/red_pitaya_vivado.tcl'
-file. This will generate a report in the
-'fpga/prj/classic/out/post_imp_io.rpt'
+'report_io -file $path_out/post_imp_io.rpt' to the 'fpga/red_pitaya_vivado.tcl' file. This will generate a report in the 'fpga/prj/classic/out/post_imp_io.rpt'
 
 
-Table bellow shows the current setting of PINs.
-+------------+-------------------+------------+-------------------------+---------------+-------------------+---------+------------+------+---------------------+----------------------+---------+------------+-----------+----------+------+------------------+
+Table below shows the current setting of PINs.
+
 | Pin Number | Signal Name       | Bank Type  | Pin Name                | Use           | IO Standard       | IO Bank | Drive (mA) | Slew | On-Chip Termination | Off-Chip Termination | Voltage | Constraint | Pull Type | DQS Bias | Vref | Signal Integrity |
-+------------+-------------------+------------+-------------------------+---------------+-------------------+---------+------------+------+---------------------+----------------------+---------+------------+-----------+----------+------+------------------+
+|------------|-------------------|------------|-------------------------|---------------|-------------------|---------|------------|------|---------------------|----------------------|---------|------------|-----------|----------|------|------------------|
 | A1         | DDR_dm[0]         |            | PS_DDR_DM0_502          | BIDIR         | SSTL15_T_DCI      |         |            | FAST |           DCI SPLIT |            FP_VTT_50 |         | FIXED      |           |          |      | SPLIT            |
 | A2         | DDR_dq[2]         |            | PS_DDR_DQ2_502          | BIDIR         | SSTL15_T_DCI      |         |            | FAST |           DCI SPLIT |            FP_VTT_50 |         | FIXED      |           |          |      | SPLIT            |
 | A3         |                   |            | VCCO_DDR_502            | VCCO          |                   |         |            |      |                     |                      |   any** |            |           |          |      |                  |
@@ -457,18 +428,12 @@ Table bellow shows the current setting of PINs.
 | Y18        | adc_dat_i[1][15]  | High Range | IO_L17P_T2_34           | INPUT         | LVCMOS18          |      34 |            |      |                     |                 NONE |         | FIXED      |           |          |      | NONE             |
 | Y19        | adc_dat_i[1][13]  | High Range | IO_L17N_T2_34           | INPUT         | LVCMOS18          |      34 |            |      |                     |                 NONE |         | FIXED      |           |          |      | NONE             |
 | Y20        |                   | High Range | VCCO_34                 | VCCO          |                   |      34 |            |      |                     |                      |    1.80 |            |           |          |      |                  |
-+------------+-------------------+------------+-------------------------+---------------+-------------------+---------+------------+------+---------------------+----------------------+---------+------------+-----------+----------+------+------------------+
-* Default value
+
+\* Default value
 ** Special VCCO requirements may apply. Please consult the device family datasheet for specific guideline on VCCO requirements.
 
+## Modifying PIN constraints
 
-#########################
-modifying PIN constraints
-#########################
+To modify PIN constraints eddit the './fpga/sdc/red_pitaya.xdc' file.
 
-To modify PIN constraints eddit the 
-'./fpga/sdc/red_pitaya.xdc'
-file.
-
-For more details please see the following link:
-https://www.xilinx.com/support/documentation-navigation/design-hubs/dh0004-vivado-applying-design-constraints-hub.html
+For more details please see the following link: https://www.xilinx.com/support/documentation-navigation/design-hubs/dh0004-vivado-applying-design-constraints-hub.html
