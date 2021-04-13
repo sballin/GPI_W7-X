@@ -93,7 +93,7 @@ class RPServer:
         self.gotFirstQueue = False
         logging.basicConfig(filename=LOG_FILE, format='%(message)s', level=logging.DEBUG)
         
-        # Arrays to store a 10x downsampled version of the pressure readings
+        # Arrays to store a downsampled version of the pressure readings
         self.downsamplingQueue = None
         self.pressuresDownsampled = []
         # Queue of (time to execute, function, args) objects like threading.Timer does. We want to 
@@ -101,10 +101,7 @@ class RPServer:
         self.taskQueue = []
         # Queue of strings to send to GUI for logging
         self.messageQueue = []
-        # Used for pump/fill logic and shot data
-        self.pressureTimes = []
-        self.absPressures = []
-        self.diffPressures = []
+        # Pressure probe data. Will be (N,3)-shaped numpy array with columns (t, pAbsolute, pDiff)
         self.pressures = None
         # Keep track of server health
         self.mainloopTimes = []
