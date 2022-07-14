@@ -13,12 +13,18 @@ entity delay_trig is
         w7x_t1_ctl          : in  std_logic_vector(31 downto 0);
         fast_delay_1_ctl    : in  std_logic_vector(31 downto 0);
         fast_delay_2_ctl    : in  std_logic_vector(31 downto 0);
+        fast_delay_3_ctl    : in  std_logic_vector(31 downto 0);
+        fast_delay_4_ctl    : in  std_logic_vector(31 downto 0);
         fast_duration_1_ctl : in  std_logic_vector(31 downto 0);
         fast_duration_2_ctl : in  std_logic_vector(31 downto 0);
+        fast_duration_3_ctl : in  std_logic_vector(31 downto 0);
+        fast_duration_4_ctl : in  std_logic_vector(31 downto 0);
         reset_time_ctl      : in  std_logic_vector(31 downto 0);
 
         fast_puff_1_pin     : out std_logic                    ;
         fast_puff_2_pin     : out std_logic                    ;
+        fast_puff_3_pin     : out std_logic                    ;
+        fast_puff_4_pin     : out std_logic                    ;
         mili_counter_out    : out std_logic_vector(31 downto 0);
         clock_counter_out   : out std_logic_vector(31 downto 0);
         w7x_t1_out          : out std_logic                    ;
@@ -98,9 +104,33 @@ begin
     		end if;
         end if;
     end process Pass_through_3;
+    
+    -- PUFF 3
+    Pass_through_4 : process(adc_clk)
+    begin
+        if rising_edge(adc_clk) then
+            if mili_counter = unsigned(fast_delay_3_ctl) and timer_started = '1' then
+                fast_puff_3_pin <= '1';
+            elsif mili_counter = unsigned(fast_delay_3_ctl)+unsigned(fast_duration_3_ctl) or timer_started = '0' then
+                fast_puff_3_pin <= '0';
+            end if;
+        end if;
+    end process Pass_through_4;
+
+    -- PUFF 4
+    Pass_through_5 : process(adc_clk)
+    begin
+        if rising_edge(adc_clk) then
+            if mili_counter = unsigned(fast_delay_4_ctl) and timer_started = '1' then
+                fast_puff_4_pin <= '1';
+            elsif mili_counter = unsigned(fast_delay_4_ctl)+unsigned(fast_duration_4_ctl) or timer_started = '0' then
+                fast_puff_4_pin <= '0';
+            end if;
+        end if;
+    end process Pass_through_5;
 
     -- TRACK W7X_T1_CTL VALUE FOR SIMULATION
-    Pass_through_5 : process(adc_clk)
+    Pass_through_6 : process(adc_clk)
     begin
         if rising_edge(adc_clk) then
             if (w7x_t1_ctl /= "00000000000000000000000000000000" or w7x_t1_hw /= "00000000000000000000000000000000") then
@@ -109,14 +139,14 @@ begin
                 w7x_t1_out <= '0';
             end if;
         end if;
-    end process Pass_through_5;
+    end process Pass_through_6;
     
     -- TRACK TIMER_STARTED VALUE FOR SIMULATION
-    Pass_through_6 : process(adc_clk)
+    Pass_through_7 : process(adc_clk)
     begin
         if rising_edge(adc_clk) then
             timer_started_out <= timer_started;
         end if;
-    end process Pass_through_6;
+    end process Pass_through_7;
 
 end architecture Behavioral;

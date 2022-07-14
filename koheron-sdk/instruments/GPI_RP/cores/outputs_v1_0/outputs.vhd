@@ -17,6 +17,8 @@ entity outputs is
         fast_manual_ctl       : in  std_logic_vector(31 downto 0);
         fast_permission_1_ctl : in  std_logic_vector(31 downto 0);
         fast_permission_2_ctl : in  std_logic_vector(31 downto 0);
+        fast_permission_3_ctl : in  std_logic_vector(31 downto 0);
+        fast_permission_4_ctl : in  std_logic_vector(31 downto 0);
         
         slow_1_manual_pin     : out std_logic                    ;
         slow_2_manual_pin     : out std_logic                    ;
@@ -24,7 +26,9 @@ entity outputs is
         slow_4_manual_pin     : out std_logic                    ;
         fast_manual_pin       : out std_logic                    ;
         fast_permission_1_pin : out std_logic                    ;
-        fast_permission_2_pin : out std_logic                     
+        fast_permission_2_pin : out std_logic                    ;
+        fast_permission_3_pin : out std_logic                    ;
+        fast_permission_4_pin : out std_logic                     
     );
 end entity outputs;
 
@@ -76,7 +80,7 @@ begin
         end if;
     end process Pass_through_4;
 
-   Pass_through_5 : process(adc_clk)
+    Pass_through_5 : process(adc_clk)
     begin
         if (rising_edge(adc_clk)) then
             if (fast_permission_1_ctl /= "00000000000000000000000000000000") then
@@ -87,7 +91,7 @@ begin
         end if;
     end process Pass_through_5;
     
-   Pass_through_6 : process(adc_clk)
+    Pass_through_6 : process(adc_clk)
     begin
         if (rising_edge(adc_clk)) then
             if (fast_permission_2_ctl /= "00000000000000000000000000000000") then
@@ -97,8 +101,30 @@ begin
             end if;
         end if;
     end process Pass_through_6;
+
+    Pass_through_7 : process(adc_clk)
+    begin
+        if (rising_edge(adc_clk)) then
+            if (fast_permission_3_ctl /= "00000000000000000000000000000000") then
+                fast_permission_3_pin <= '1';
+            else
+                fast_permission_3_pin <= '0';
+            end if;
+        end if;
+    end process Pass_through_7;
+     
+    Pass_through_8 : process(adc_clk)
+    begin
+        if (rising_edge(adc_clk)) then
+            if (fast_permission_4_ctl /= "00000000000000000000000000000000") then
+                fast_permission_4_pin <= '1';
+            else
+                fast_permission_4_pin <= '0';
+            end if;
+        end if;
+    end process Pass_through_8;
     
-   Pass_through_7 : process(adc_clk)
+    Pass_through_9 : process(adc_clk)
     begin
         if (rising_edge(adc_clk)) then
             if (fast_manual_ctl /= "00000000000000000000000000000000") then
@@ -107,5 +133,5 @@ begin
                 fast_manual_pin <= '0';
             end if;
         end if;
-    end process Pass_through_7;
+    end process Pass_through_9;
 end architecture Behavioral;

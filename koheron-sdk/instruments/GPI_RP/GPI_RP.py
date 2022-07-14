@@ -76,25 +76,49 @@ class GPI_RP(object):
     @command()
     def set_fast_permission_1(self, state):
         pass
+        
+    @command()
+    def set_fast_permission_2(self, state):
+        pass
+        
+    @command()
+    def set_fast_permission_3(self, state):
+        pass
+        
+    @command()
+    def set_fast_permission_4(self, state):
+        pass
 
     @command()
     def set_fast_delay_1(self, state):
         pass
         
     @command()
-    def set_fast_duration_1(self, state):
-        pass
-
-    @command()
-    def set_fast_permission_2(self, state):
-        pass
-
-    @command()
     def set_fast_delay_2(self, state):
         pass
         
     @command()
+    def set_fast_delay_3(self, state):
+        pass
+        
+    @command()
+    def set_fast_delay_4(self, state):
+        pass
+        
+    @command()
+    def set_fast_duration_1(self, state):
+        pass
+        
+    @command()
     def set_fast_duration_2(self, state):
+        pass
+        
+    @command()
+    def set_fast_duration_3(self, state):
+        pass
+        
+    @command()
+    def set_fast_duration_4(self, state):
         pass
          
     @command()
