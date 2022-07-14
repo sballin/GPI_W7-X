@@ -209,6 +209,18 @@ class GUI:
         self.start_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry = ttk.Entry(puff_controls_frame, width=10)
         self.duration_2_entry.insert(0, str(DEFAULT_PUFF))
+        ## Line 3
+        self.enable_puff_3 = tk.IntVar()
+        self.enable_puff_3_check = tk.Checkbutton(puff_controls_frame, variable=self.enable_puff_3, background=gray)
+        self.start_3_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_3_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_3_entry.insert(0, str(DEFAULT_PUFF))
+        ## Line 4
+        self.enable_puff_4 = tk.IntVar()
+        self.enable_puff_4_check = tk.Checkbutton(puff_controls_frame, variable=self.enable_puff_4, background=gray)
+        self.start_4_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_4_entry = ttk.Entry(puff_controls_frame, width=10)
+        self.duration_4_entry.insert(0, str(DEFAULT_PUFF))
         
         permission_controls_line1 = tk.Frame(controls_frame, background=gray)
         self.w7x_permission_text = tk.StringVar()
@@ -293,12 +305,20 @@ class GUI:
         tk.Label(puff_controls_frame, text='Duration [s]', background=gray).grid(row=0, column=9)
         tk.Label(puff_controls_frame, text='Puff 1', background=gray).grid(row=1, column=6)
         tk.Label(puff_controls_frame, text='Puff 2', background=gray).grid(row=2, column=6)
+        tk.Label(puff_controls_frame, text='Puff 3', background=gray).grid(row=3, column=6)
+        tk.Label(puff_controls_frame, text='Puff 4', background=gray).grid(row=4, column=6)
         self.enable_puff_1_check.grid(row=1, column=7)
-        self.start_1_entry.grid(row=1, column=8)
-        self.duration_1_entry.grid(row=1, column=9)
         self.enable_puff_2_check.grid(row=2, column=7)
+        self.enable_puff_3_check.grid(row=3, column=7)
+        self.enable_puff_4_check.grid(row=4, column=7)
+        self.start_1_entry.grid(row=1, column=8)
         self.start_2_entry.grid(row=2, column=8)
+        self.start_3_entry.grid(row=3, column=8)
+        self.start_4_entry.grid(row=4, column=8)
+        self.duration_1_entry.grid(row=1, column=9)
         self.duration_2_entry.grid(row=2, column=9)
+        self.duration_3_entry.grid(row=3, column=9)
+        self.duration_4_entry.grid(row=4, column=9)
         puff_controls_frame.pack(side=tk.TOP, pady=10, fill=tk.X)
         ### Permission controls frame
         self.w7x_permission_label.pack(side=tk.LEFT)
@@ -518,11 +538,17 @@ class GUI:
         
     def handleT0(self):
         Tdone = self.middle.handleT0({'puff_1_permission': self.enable_puff_1.get(),
-                                      'puff_1_start': self.getPuffStart(1),
-                                      'puff_1_duration': self.getPuffDuration(1),
                                       'puff_2_permission': self.enable_puff_2.get(),
+                                      'puff_3_permission': self.enable_puff_3.get(),
+                                      'puff_4_permission': self.enable_puff_4.get(),
+                                      'puff_1_start': self.getPuffStart(1),
                                       'puff_2_start': self.getPuffStart(2),
+                                      'puff_3_start': self.getPuffStart(3),
+                                      'puff_4_start': self.getPuffStart(4),
+                                      'puff_1_duration': self.getPuffDuration(1),
                                       'puff_2_duration': self.getPuffDuration(2),
+                                      'puff_3_duration': self.getPuffDuration(3),
+                                      'puff_4_duration': self.getPuffDuration(4),
                                       'shutter_change_duration': SHUTTER_CHANGE,
                                       'software_t1': SOFTWARE_T1,
                                       'pretrigger': PRETRIGGER})
@@ -554,6 +580,8 @@ class GUI:
     def changeStandardElements(self, state):
         for element in [self.enable_puff_1_check, self.start_1_entry, self.duration_1_entry, 
                         self.enable_puff_2_check, self.start_2_entry, self.duration_2_entry,
+                        self.enable_puff_3_check, self.start_3_entry, self.duration_3_entry,
+                        self.enable_puff_4_check, self.start_4_entry, self.duration_4_entry,
                         self.T0_button, self.pump_fill_button, self.pump_out_check, 
                         self.exhaust_check, self.desired_pressure_entry]:
             element.config(state=state)

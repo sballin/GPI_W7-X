@@ -105,10 +105,14 @@ create_bd_port -dir O -from 0 -to 0 slow_2_manual
 create_bd_port -dir O -from 0 -to 0 slow_3_manual
 create_bd_port -dir O -from 0 -to 0 slow_4_manual
 create_bd_port -dir O -from 0 -to 0 fast_manual
-create_bd_port -dir O -from 0 -to 0 fast_puff_1
 create_bd_port -dir O -from 0 -to 0 fast_permission_1
-create_bd_port -dir O -from 0 -to 0 fast_puff_2
 create_bd_port -dir O -from 0 -to 0 fast_permission_2
+create_bd_port -dir O -from 0 -to 0 fast_permission_3
+create_bd_port -dir O -from 0 -to 0 fast_permission_4
+create_bd_port -dir O -from 0 -to 0 fast_puff_1
+create_bd_port -dir O -from 0 -to 0 fast_puff_2
+create_bd_port -dir O -from 0 -to 0 fast_puff_3
+create_bd_port -dir O -from 0 -to 0 fast_puff_4
 
 # Connect to clock
 connect_bd_net [get_bd_pins outputs_0/adc_clk] [get_bd_pins adc_dac/adc_clk]
@@ -156,13 +160,19 @@ connect_bd_net [get_bd_pins ctl/slow_4_manual] [get_bd_pins outputs_0/slow_4_man
 connect_bd_net [get_bd_pins ctl/GPI_safe_state] [get_bd_pins outputs_0/GPI_safe_state_ctl]
 connect_bd_net [get_bd_pins ctl/fast_permission_1] [get_bd_pins outputs_0/fast_permission_1_ctl]
 connect_bd_net [get_bd_pins ctl/fast_permission_2] [get_bd_pins outputs_0/fast_permission_2_ctl]
+connect_bd_net [get_bd_pins ctl/fast_permission_3] [get_bd_pins outputs_0/fast_permission_3_ctl]
+connect_bd_net [get_bd_pins ctl/fast_permission_4] [get_bd_pins outputs_0/fast_permission_4_ctl]
 connect_bd_net [get_bd_pins ctl/fast_manual] [get_bd_pins outputs_0/fast_manual_ctl]
 
 # Connect to trig delay block
 connect_bd_net [get_bd_pins ctl/fast_delay_1] [get_bd_pins trig_delay_0/fast_delay_1_ctl]
 connect_bd_net [get_bd_pins ctl/fast_delay_2] [get_bd_pins trig_delay_0/fast_delay_2_ctl]
+connect_bd_net [get_bd_pins ctl/fast_delay_3] [get_bd_pins trig_delay_0/fast_delay_3_ctl]
+connect_bd_net [get_bd_pins ctl/fast_delay_4] [get_bd_pins trig_delay_0/fast_delay_4_ctl]
 connect_bd_net [get_bd_pins ctl/fast_duration_1] [get_bd_pins trig_delay_0/fast_duration_1_ctl]
 connect_bd_net [get_bd_pins ctl/fast_duration_2] [get_bd_pins trig_delay_0/fast_duration_2_ctl]
+connect_bd_net [get_bd_pins ctl/fast_duration_3] [get_bd_pins trig_delay_0/fast_duration_3_ctl]
+connect_bd_net [get_bd_pins ctl/fast_duration_4] [get_bd_pins trig_delay_0/fast_duration_4_ctl]
 connect_bd_net [get_bd_pins ctl/reset_time] [get_bd_pins trig_delay_0/reset_time_ctl]
 connect_bd_net [get_bd_ports W7X_T1] [get_bd_pins trig_delay_0/w7x_t1_hw]
 connect_bd_net [get_bd_pins ctl/send_T1] [get_bd_pins trig_delay_0/w7x_t1_ctl]
@@ -181,7 +191,11 @@ connect_bd_net [get_bd_ports slow_3_manual] [get_bd_pins outputs_0/slow_3_manual
 connect_bd_net [get_bd_ports slow_4_manual] [get_bd_pins outputs_0/slow_4_manual_pin]
 connect_bd_net [get_bd_ports fast_puff_1] [get_bd_pins trig_delay_0/fast_puff_1_pin]
 connect_bd_net [get_bd_ports fast_puff_2] [get_bd_pins trig_delay_0/fast_puff_2_pin]
+connect_bd_net [get_bd_ports fast_puff_3] [get_bd_pins trig_delay_0/fast_puff_3_pin]
+connect_bd_net [get_bd_ports fast_puff_4] [get_bd_pins trig_delay_0/fast_puff_4_pin]
 connect_bd_net [get_bd_ports fast_manual] [get_bd_pins outputs_0/fast_manual_pin]
 
 connect_bd_net [get_bd_ports fast_permission_1] [get_bd_pins outputs_0/fast_permission_1_pin]
 connect_bd_net [get_bd_ports fast_permission_2] [get_bd_pins outputs_0/fast_permission_2_pin]
+connect_bd_net [get_bd_ports fast_permission_3] [get_bd_pins outputs_0/fast_permission_3_pin]
+connect_bd_net [get_bd_ports fast_permission_4] [get_bd_pins outputs_0/fast_permission_4_pin]

@@ -75,16 +75,24 @@ class GPI_RP {
             ctl.write<reg::fast_manual>(state);
         }
 
+        void reset_time(uint32_t state) {
+            ctl.write<reg::reset_time>(state);
+        }
+        
         void set_fast_permission_1(uint32_t state) {
             ctl.write<reg::fast_permission_1>(state);
         }
 
-        void set_fast_duration_1(uint32_t state) {
-            ctl.write<reg::fast_duration_1>(state);
+        void set_fast_permission_2(uint32_t state) {
+            ctl.write<reg::fast_permission_2>(state);
         }
-
-        void reset_time(uint32_t state) {
-            ctl.write<reg::reset_time>(state);
+        
+        void set_fast_permission_3(uint32_t state) {
+            ctl.write<reg::fast_permission_3>(state);
+        }
+        
+        void set_fast_permission_4(uint32_t state) {
+            ctl.write<reg::fast_permission_4>(state);
         }
 
         void set_fast_delay_1(uint32_t state) {
@@ -95,12 +103,28 @@ class GPI_RP {
             ctl.write<reg::fast_delay_2>(state);
         }
 
-        void set_fast_permission_2(uint32_t state) {
-            ctl.write<reg::fast_permission_2>(state);
+        void set_fast_delay_3(uint32_t state) {
+            ctl.write<reg::fast_delay_3>(state);
+        }
+        
+        void set_fast_delay_4(uint32_t state) {
+            ctl.write<reg::fast_delay_4>(state);
+        }
+        
+        void set_fast_duration_1(uint32_t state) {
+            ctl.write<reg::fast_duration_1>(state);
         }
 
         void set_fast_duration_2(uint32_t state) {
             ctl.write<reg::fast_duration_2>(state);
+        }
+        
+        void set_fast_duration_3(uint32_t state) {
+            ctl.write<reg::fast_duration_3>(state);
+        }
+        
+        void set_fast_duration_4(uint32_t state) {
+            ctl.write<reg::fast_duration_4>(state);
         }
 
         void send_T1(uint32_t state) {

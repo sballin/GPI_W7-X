@@ -41,10 +41,16 @@ control_registers:
   - fast_manual
   - fast_permission_1
   - fast_permission_2
+  - fast_permission_3
+  - fast_permission_4
   - fast_delay_1
   - fast_delay_2
+  - fast_delay_3
+  - fast_delay_4
   - fast_duration_1
   - fast_duration_2
+  - fast_duration_3
+  - fast_duration_4
   - send_T1
   - reset_time
   - analog_out

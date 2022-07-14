@@ -458,12 +458,6 @@ class RPServer:
         else:
             return 'bad'
         
-    def handlePermission(self, puffNumber, permissionValue):
-        '''
-        This method may be unnecessary. Does FPGA even check permission?
-        '''
-        getattr(self.RPKoheron, 'set_fast_permission_%d' % puffNumber)(permissionValue)
-        
     def getValveStatus(self, valveName):
         if valveName == 'FV2':
             statusInt = self.RPKoheron.get_fast_sts()
@@ -517,7 +511,7 @@ class RPServer:
         """Output permission signal on pin required by black box for it to really open FV.
         
         Args:
-            puff_number: (int) 1 or 2
+            puff_number: (int) 1,2,3, or 4
             value: (bool) True = permission
         """
         getattr(self.RPKoheron, 'set_fast_permission_%d' % puff_number)(int(value))
@@ -546,11 +540,18 @@ class RPServer:
     def handleT0(self, p):
         valid_start_1 = p['puff_1_start'] is not None and p['puff_1_start'] >= 0
         valid_start_2 = p['puff_2_start'] is not None and p['puff_2_start'] >= 0
+        valid_start_3 = p['puff_3_start'] is not None and p['puff_3_start'] >= 0
+        valid_start_4 = p['puff_4_start'] is not None and p['puff_4_start'] >= 0
         valid_duration_1 = p['puff_1_duration'] is not None and 0 < p['puff_1_duration'] <= MAX_PUFF_DURATION
         valid_duration_2 = p['puff_2_duration'] is not None and 0 < p['puff_2_duration'] <= MAX_PUFF_DURATION
+        valid_duration_3 = p['puff_3_duration'] is not None and 0 < p['puff_3_duration'] <= MAX_PUFF_DURATION
+        valid_duration_4 = p['puff_4_duration'] is not None and 0 < p['puff_4_duration'] <= MAX_PUFF_DURATION
         puff_1_happening = p['puff_1_permission'] and valid_start_1 and valid_duration_1
         puff_2_happening = p['puff_2_permission'] and valid_start_2 and valid_duration_2
+        puff_3_happening = p['puff_3_permission'] and valid_start_3 and valid_duration_3
+        puff_4_happening = p['puff_4_permission'] and valid_start_4 and valid_duration_4
         pretrigger = p['pretrigger']
+        # The remainder of this paragraph provides explanatory error messages and quits method early if there are problems
         # Puff 1 should always be used
         quit = False
         if not puff_1_happening:
@@ -561,23 +562,35 @@ class RPServer:
             if not p['puff_1_permission']:
                 self.addToLog('Error: puff 1 must be used')
             quit = True
-        if p['puff_2_permission'] and not puff_2_happening:
-            if p['puff_2_start'] is None or p['puff_2_start'] < 0:
-                self.addToLog('Error: puff 2 has invalid start')
-            if p['puff_2_duration'] is None or p['puff_2_duration'] <= 0 or p['puff_2_duration'] > MAX_PUFF_DURATION:
-                self.addToLog('Error: puff 2 has invalid duration')    
-            quit = True
-        # Puff 1 should never bleed into puff 2
+        for puffnum in [2, 3, 4]:
+            if p['puff_%d_permission' % puffnum] and not locals()['puff_%d_happening' % puffnum]:
+                if p['puff_%d_start' % puffnum] is None or p['puff_%d_start' % puffnum] < 0:
+                    self.addToLog('Error: puff %d has invalid start' % puffnum)
+                if p['puff_%d_duration' % puffnum] is None or p['puff_%d_duration' % puffnum] <= 0 or p['puff_%d_duration' % puffnum] > MAX_PUFF_DURATION:
+                    self.addToLog('Error: puff %d has invalid duration' % puffnum)    
+                quit = True
+        # Puff 1 should not bleed into puff 2
         if puff_1_happening and puff_2_happening:
             if not p['puff_1_start'] + p['puff_1_duration'] < p['puff_2_start']:
                 self.addToLog('Error: puff 1 and puff 2 would overlap')
                 quit = True
+        # Puff 2 should not bleed into puff 3
+        if puff_2_happening and puff_3_happening:
+            if not p['puff_2_start'] + p['puff_2_duration'] < p['puff_3_start']:
+                self.addToLog('Error: puff 2 and puff 3 would overlap')
+                quit = True
+        # Puff 3 should not bleed into puff 4
+        if puff_3_happening and puff_4_happening:
+            if not p['puff_3_start'] + p['puff_3_duration'] < p['puff_4_start']:
+                self.addToLog('Error: puff 3 and puff 4 would overlap')
+                quit = True
+        # TODO: also quit when e.g. only puffs 1 and 4 are enabled
         if quit:
             return 0
             
         # Set permission signal required by black box
-        self.setPermission(1, puff_1_happening)
-        self.setPermission(2, puff_2_happening)
+        for puffnum in [1, 2, 3, 4]:
+            self.setPermission(puffnum, locals()['puff_%d_happening' % puffnum])
         
         self.setState('shot')
         self.addToLog('---T0---')
@@ -588,50 +601,43 @@ class RPServer:
         else:
             self.addTask(pretrigger, self.addToLog, args=['Hardware T1 should happen now'])
         
-        # Calculate when both puffs will be done to queue post-shot actions
+        # Calculate when puffs will be done to queue post-shot actions
         if puff_1_happening: # never False
             puff_1_done = p['puff_1_start'] + p['puff_1_duration']
             self.addTask(pretrigger+p['puff_1_start']-p['shutter_change_duration'], self.setShutter, ['open'])
         else:
             puff_1_done = 0
-        if puff_2_happening:
-            puff_2_done = p['puff_2_start'] + p['puff_2_duration']
-        else:
-            puff_2_done = 0
-        bothPuffsDone = max(puff_1_done, puff_2_done)
-        # Close shutter after both puffs are done
-        self.addTask(pretrigger+bothPuffsDone+1, self.setShutter, ['close'])
-        # Close shutter in between puffs if they're far apart
+        puff_2_done = int(puff_2_happening)*(p['puff_2_start'] + p['puff_2_duration'])
+        puff_3_done = int(puff_3_happening)*(p['puff_3_start'] + p['puff_3_duration'])
+        puff_4_done = int(puff_4_happening)*(p['puff_4_start'] + p['puff_4_duration'])
+        allPuffsDone = max(puff_1_done, puff_2_done, puff_3_done, puff_4_done)
+        # Close shutter after all puffs are done
+        self.addTask(pretrigger+allPuffsDone+1, self.setShutter, ['close'])
+        # Close shutter in between puffs if they're far apart (TODO: also handle puffs 3 and 4)
         if puff_1_happening and puff_2_happening:
             if p['puff_2_start'] - puff_1_done > 2*p['shutter_change_duration'] + 3:
                 self.addTask(pretrigger+puff_1_done+1, self.setShutter, ['close'])
                 self.addTask(pretrigger+p['puff_2_start']-p['shutter_change_duration'], self.setShutter, ['open'])
-        # Open V3, set state 'idle', and save pressure data after both puffs are done
-        self.addTask(pretrigger + bothPuffsDone + 2, self.postShotActions, [])
-        # Reset puff countup timer after both puffs done (not sure this is working)
-        self.RPKoheron.reset_time(int(bothPuffsDone*1000))
+        # Open V3, set state 'idle', and save pressure data after all puffs are done
+        self.addTask(pretrigger + allPuffsDone + 2, self.postShotActions, [])
+        # Reset puff countup timer after all puffs done (not sure this is working)
+        self.RPKoheron.reset_time(int(allPuffsDone*1000))
         # Variables to record times to return appropriate data to GUI post-puff
         self.lastT1 = time.time()+pretrigger
-        self.lastTdone = self.lastT1+bothPuffsDone+2
+        self.lastTdone = self.lastT1+allPuffsDone+2
         
-        # Send fast puff timing info to FPGA 
-        if puff_1_happening: # never False
-            self.RPKoheron.set_fast_delay_1(int(p['puff_1_start']*1000))
-            self.RPKoheron.set_fast_duration_1(int(p['puff_1_duration']*1000))
-            self.addTask(pretrigger+p['puff_1_start'], self.addToLog, ['Puff 1 should happen now'])
-        else:
-            self.RPKoheron.set_fast_delay_1(2+int(bothPuffsDone*1000))
-            self.RPKoheron.set_fast_duration_1(2+int(bothPuffsDone*1000))
-        if puff_2_happening:
-            self.RPKoheron.set_fast_delay_2(int(p['puff_2_start']*1000))
-            self.RPKoheron.set_fast_duration_2(int(p['puff_2_duration']*1000))
-            self.addTask(pretrigger+p['puff_2_start'], self.addToLog, ['Puff 2 should happen now'])
-        else:
-            self.RPKoheron.set_fast_delay_2(2+int(bothPuffsDone*1000))
-            self.RPKoheron.set_fast_duration_2(2+int(bothPuffsDone*1000))
+        # Send fast puff timing info to FPGA
+        for puffnum in [1, 2, 3, 4]:
+            if locals()['puff_%d_happening' % puffnum]:
+                getattr(self.RPKoheron, 'set_fast_delay_%d' % puffnum)(int(p['puff_%d_start' % puffnum]*1000))
+                getattr(self.RPKoheron, 'set_fast_duration_%d' % puffnum)(int(p['puff_%d_duration' % puffnum]*1000))
+                self.addTask(pretrigger+p['puff_%d_start' % puffnum], self.addToLog, ['Puff %d should happen now' % puffnum])
+            else:
+                getattr(self.RPKoheron, 'set_fast_delay_%d' % puffnum)(2+int(allPuffsDone*1000))
+                getattr(self.RPKoheron, 'set_fast_duration_%d' % puffnum)(2+int(allPuffsDone*1000))
         
         # Return num. seconds after which it is safe for GUI to ask for puff pressure data
-        return pretrigger+bothPuffsDone+2
+        return pretrigger+allPuffsDone+2
 
 
 if __name__ == '__main__':
