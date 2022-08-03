@@ -19,11 +19,11 @@ from GPI_RP.GPI_RP import GPI_RP
 
 
 # User settings
-RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
+RP_HOSTNAME = 'w7xrp2' # hostname of red pitaya being used
 LOG_FILE = 'log.txt'
 PUMPED_OUT = 0 # mbar, pressure at which to stop pumping out
 FILL_MARGIN = 5 # mbar, stop this amount short of desired fill pressure to avoid overshoot
-SIMULATE_RP = True # create fake data to test pump/puff methods, gui...
+SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
 ANNOUNCE_HEALTH = False # regularly log info about middle server health
 
 # Less commonly changed user settings
