@@ -23,7 +23,7 @@ RP_HOSTNAME = 'rp3' # hostname of red pitaya being used
 LOG_FILE = 'log.txt'
 PUMPED_OUT = 0 # mbar, pressure at which to stop pumping out
 FILL_MARGIN = 5 # mbar, stop this amount short of desired fill pressure to avoid overshoot
-SIMULATE_RP = False # create fake data to test pump/puff methods, gui...
+SIMULATE_RP = True # create fake data to test pump/puff methods, gui...
 ANNOUNCE_HEALTH = False # regularly log info about middle server health
 
 # Less commonly changed user settings
@@ -531,8 +531,9 @@ class RPServer:
         start = find_nearest(self.pressures[:,0], self.lastT1)
         end = find_nearest(self.pressures[:,0], self.lastTdone)
         t = self.pressures[start:end,0].tolist()
+        da = self.pressures[start:end,1].tolist()
         dp = self.pressures[start:end,2].tolist()
-        self.lastShotData = [self.lastT1, t, dp]
+        self.lastShotData = [self.lastT1, t, dp, da]
         
     def getLastShotData(self):
         return self.lastShotData
@@ -607,9 +608,18 @@ class RPServer:
             self.addTask(pretrigger+p['puff_1_start']-p['shutter_change_duration'], self.setShutter, ['open'])
         else:
             puff_1_done = 0
-        puff_2_done = int(puff_2_happening)*(p['puff_2_start'] + p['puff_2_duration'])
-        puff_3_done = int(puff_3_happening)*(p['puff_3_start'] + p['puff_3_duration'])
-        puff_4_done = int(puff_4_happening)*(p['puff_4_start'] + p['puff_4_duration'])
+        if puff_2_happening:
+            puff_2_done = p['puff_2_start'] + p['puff_2_duration']
+        else:
+            puff_2_done = 0
+        if puff_3_happening:
+            puff_3_done = p['puff_3_start'] + p['puff_3_duration']
+        else:
+            puff_3_done = 0
+        if puff_4_happening:
+            puff_4_done = p['puff_4_start'] + p['puff_4_duration']
+        else:
+            puff_4_done = 0
         allPuffsDone = max(puff_1_done, puff_2_done, puff_3_done, puff_4_done)
         # Close shutter after all puffs are done
         self.addTask(pretrigger+allPuffsDone+1, self.setShutter, ['close'])

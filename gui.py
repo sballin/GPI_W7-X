@@ -605,7 +605,7 @@ class GUI:
     def plotPuffs(self):
         # Get shot data from middle server
         try:
-            T1, t, dp = self.middle.getLastShotData()
+            T1, t, dp, da = self.middle.getLastShotData()
         except Exception as e:
             self._add_to_log('Get last shot data failed: %s' % e)
             return
@@ -617,6 +617,8 @@ class GUI:
                 os.mkdir(SAVE_FOLDER)
             savepath = SAVE_FOLDER + '/diff_pressure_%d.npy' % int(T1)
             np.save(savepath, [t, dp])
+            savepath = SAVE_FOLDER + '/abs_pressure_%d.npy' % int(T1)
+            np.save(savepath, [t, da])
             self._add_to_log('Saved shot data to %s' % savepath)
         except Exception as e:
             self._add_to_log('Save pressure data failed: %s' % e)
